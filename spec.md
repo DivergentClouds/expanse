@@ -73,9 +73,16 @@ macro foo([3]bar, baz, []qud) {
 
 
 ### Arguments
+
 Macro arguments may be an integer or an array of integers. The length of each argument must match
 the length of the corresponding parameter.
 
+### Return
+
+You may exit a macro with the `return` keyword at any point within a macro. You may optionally
+follow it with a value to return that value. Returned values may be assigned to a variable or a
+constant or passed directly to a macro. If a returned value is ignored a warning is issued. This
+warning may assigning to the built in variable `_`;
 
 ## Arrays
 
@@ -113,7 +120,8 @@ on the line where they are defined. A constant is defined with the `const` keywo
 name of the constant, and an equals sign followed by a value. A variable is defined the same way but
 with the `var` keyword. Top-level variable and constant definitions may optionally be be preceded
 with the `pub` keyword to allow it to be imported to an external file. A constant may not be
-redefined within its scope.
+redefined within its scope. A warning is issued for unused variables and constants that are not
+marked as `pub`.
 ```
 const foo = 0
 const bar = foo           ; equivalent to 0
@@ -121,7 +129,7 @@ const arr1 = [foo, 1, 2]  ; equivalent to [0, 1, 2]
 const arr2 = [arr1, 3]    ; equivalent to [0, 1, 2, 3]
 ```
 
-### Built in constants
+### Built-in constants
 - `>`
   - Address of the next word, if used as a macro argument then the address points to after the macro
 - `$`
@@ -146,12 +154,16 @@ const arr2 = [arr1, 3]    ; equivalent to [0, 1, 2, 3]
   - 1 is big endian
 - `WORD_SIZE`
   - Word size in bytes, defaults to 2
-  - if an integer that can not fit in a word would be written to the output, an error will occur
+  - If an integer that can not fit in a word would be written to the output, an error will occur
 - `MAX_WORD`
   - Largest signed value that can fit in a word
 - `MIN_WORD`
   - Smallest signed value that can fit in a word
 
+### Built-in variables
+- `_`
+  - May not be read from, if an attempt is made to read from it, an error will occur
+  - Assign to this to suppress a warning for an unused variable, constant, or macro return value
 
 ## Expressions
 
