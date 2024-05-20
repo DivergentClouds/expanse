@@ -80,9 +80,8 @@ the length of the corresponding parameter.
 ### Return
 
 You may exit a macro with the `return` keyword at any point within a macro. You may optionally
-follow it with a value to return that value. Returned values may be assigned to a variable or a
-constant or passed directly to a macro. If a returned value is ignored a warning is issued. This
-warning may assigning to the built in variable `_`;
+follow it with a value to return that value. If a returned value is ignored an error will occur.
+This error may be suppressed by assigning to the built in variable `_`;
 
 ## Arrays
 
@@ -163,7 +162,7 @@ const arr2 = [arr1, 3]    ; equivalent to [0, 1, 2, 3]
 ### Built-in variables
 - `_`
   - May not be read from, if an attempt is made to read from it, an error will occur
-  - Assign to this to suppress a warning for an unused variable, constant, or macro return value
+  - Assign to this to suppress an unused value error or warning
 
 ## Expressions
 
