@@ -75,7 +75,8 @@ macro foo([3]bar, baz, []qud) {
 ### Arguments
 
 Macro arguments may be an integer or an array of integers. The length of each argument must match
-the length of the corresponding parameter.
+the length of the corresponding parameter. An integer being passed to a macro may be coerced to an
+array of length 1.
 
 ### Return
 
@@ -211,7 +212,7 @@ Expressions allow for the following operations:
 - `A has B`
   - 1 if `A` contains `B`, 0 otherwise
   - `A` must be an array
-  - If `B` is an array, all elements must be contained in `A` in order with no gaps
+  - If `B` is an array, all elements of `A` must be equal to an element of `B`
 - `A ! B`
   - Array access
   - `A` must be an array
@@ -322,7 +323,7 @@ in arrays are treated as bytes.
 
 The `error` pseudo-macro allows you to halt compilation with a message. It takes a single array
 argument of indeterminate length. The array is then printed and compilation halts. Numbers in the
-array are printed according to `DIAGNOSTIC_BASE`.
+array are printed according to `DIAGNOSTIC_BASE`. Each number is followed by a space.
 
 ```
 error("error message")
@@ -332,6 +333,7 @@ error("error message")
 
 The `info` pseudo-macro allows you to print a message. It takes a single array of indeterminate
 length. The array is then printed. Numbers in the array are printed according to `DIAGNOSTIC_BASE`.
+Each number is followed by a space.
 
 ```
 info("message")
