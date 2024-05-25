@@ -81,8 +81,8 @@ array of length 1.
 ### Return
 
 You may exit a macro with the `return` keyword at any point within a macro. You may optionally
-follow it with a value to return that value. If a returned value is ignored an error will occur.
-This error may be suppressed by assigning to the built in variable `_`;
+follow it with a value to return that value. If a returned value is ignored, it will be treated
+as if it was written in code.
 
 ## Arrays
 
@@ -160,11 +160,6 @@ const arr2 = [arr1, 3]    ; equivalent to [0, 1, 2, 3]
 - `MIN_WORD`
   - Smallest signed value that can fit in a word
 
-### Built-in variables
-- `_`
-  - May not be read from, if an attempt is made to read from it, an error will occur
-  - Assign to this to suppress an unused value error or warning
-
 ## Expressions
 
 Expressions allow you to perform arithmetic on integers and arrays. An expression consisting of an
@@ -183,8 +178,11 @@ Expressions allow for the following operations:
   - Multiplication
 - `A / B`
   - Integer division
+  - If `B` is equal to 0, an error will occur
 - `A % B`
   - Modulo
+  - Result is positive if the sign of `A` and `B` are the same, otherwise the result is negative
+  - If `B` is equal to 0, an error will occur
 - `A << B`
   - Left shift
 - `A >> B`
