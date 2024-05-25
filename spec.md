@@ -130,10 +130,7 @@ const arr2 = [arr1, 3]    ; equivalent to [0, 1, 2, 3]
 ```
 
 ### Built-in constants
-- `>`
-  - Address of the next word, if used as a macro argument then the address points to after the macro
-- `$`
-  - Address of the current word
+
 - `MAX_FILESIZE`
   - Largest allowed output file size, defaults to the largest unsigned value that can fit in a word
   - When in raw mode, if any location in the file is larger than this, an error will occur
@@ -160,6 +157,15 @@ const arr2 = [arr1, 3]    ; equivalent to [0, 1, 2, 3]
 - `MIN_WORD`
   - Smallest signed value that can fit in a word
 
+### Built-in variables
+
+Built-in variables may not be manually reassigned, instead they take a different value depending on
+their location within the program.
+
+- `>`
+  - Address of the next word, if used as a macro argument then the address points to after the macro
+- `$`
+  - Address of the current word
 ## Expressions
 
 Expressions allow you to perform arithmetic on integers and arrays. An expression consisting of an
