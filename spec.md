@@ -166,6 +166,7 @@ their location within the program.
   - Address of the next word, if used as a macro argument then the address points to after the macro
 - `$`
   - Address of the current word
+
 ## Expressions
 
 Expressions allow you to perform arithmetic on integers and arrays. An expression consisting of an
