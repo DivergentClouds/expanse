@@ -112,7 +112,6 @@ length of an array as prefix it with a `#`. Arrays may also be used in code, in 
 expanded out, as if it was a list of its components. To access an integer within the array, follow
 it with square brackets with an integer inside.
 
-
 ## Variables and Constants
 
 Variables and constants are named values. Variables and constant definitions must be the only thing
@@ -262,7 +261,6 @@ foo @ 0x100:      ; sets current address to 256
 
 bar @ $ + 64:    ; sets current address to the current address + 64
 ```
-
 
 ## Control Flow
 
