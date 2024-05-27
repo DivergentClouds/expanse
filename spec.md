@@ -71,7 +71,6 @@ macro foo([3]bar, baz, []qud) {
 }
 ```
 
-
 ### Arguments
 
 Macro arguments may be an integer or an array of integers. The length of each argument must match
@@ -293,7 +292,6 @@ If statements allow you to conditionally execute a block of code. If statements 
 `if` keyword followed by parentheses containing the condition. The code to be conditionally executed
 follows as a block. The block is only executed if the condition is non-zero. The condition must be
 an integer.
-
 
 ```
 if (2 == 3) {
