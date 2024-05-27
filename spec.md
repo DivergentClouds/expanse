@@ -355,7 +355,7 @@ foo.baz
 
 ## Comments
 
-Comments are prefixed with a semicolon and last until the end of the line.
+Comments are preceded by a semicolon and last until the end of the line.
 
 ```
 ; this is a comment
