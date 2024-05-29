@@ -132,6 +132,7 @@ const arr2 = [arr1, 3]    ; equivalent to [0, 1, 2, 3]
 - `MAX_FILESIZE`
   - Largest allowed output file size, defaults to the largest unsigned value that can fit in a word
   - Must not be greater than the largest unsigned value that can fit in a word
+  - Must be greater than 0
   - When in raw mode, if any location in the file is larger than this, an error will occur
   - When in relocatable mode, if the file size in bytes is larger than this, an error will occur
 - `MAX_DEPTH`
