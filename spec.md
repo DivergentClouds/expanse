@@ -207,13 +207,13 @@ Expressions allow for the following operations:
   - 1 if `A == B`, 0 otherwise
 - `A != B`
   - 1 if `A != B`, 0 otherwise
-- `A > B`
+- `A gt B`
   - 1 if `A > B`, 0 otherwise
-- `A >= B`
+- `A geq B`
   - 1 if `A >= B`, 0 otherwise
-- `A < B`
+- `A lt B`
   - 1 if `A < B`, 0 otherwise
-- `A <= B`
+- `A leq B`
   - 1 if `A <= B`, 0 otherwise
 - `A has B`
   - 1 if `A` contains `B`, 0 otherwise
