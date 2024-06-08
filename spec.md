@@ -13,7 +13,7 @@ Subleq is a computer architecture with only a single instruction. The instructio
 ```
 memory[B] = memory[B] - memory[A]
 
-if (memory[b] <= 0) {
+if (memory[B] <= 0) {
   goto C
 } else {
   goto PC + 3
