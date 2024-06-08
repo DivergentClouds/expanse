@@ -163,7 +163,7 @@ const arr2 = [arr1, 3]    ; equivalent to [0, 1, 2, 3]
 Built-in variables may not be manually reassigned, instead they take a different value depending on
 their location within the program.
 
-- `>`
+- `\`
   - Address of the next word, if used as a macro argument then the address points to after the macro
 - `$`
   - Address of the current word
@@ -207,13 +207,13 @@ Expressions allow for the following operations:
   - 1 if `A == B`, 0 otherwise
 - `A != B`
   - 1 if `A != B`, 0 otherwise
-- `A gt B`
+- `A > B`
   - 1 if `A > B`, 0 otherwise
-- `A geq B`
+- `A >= B`
   - 1 if `A >= B`, 0 otherwise
-- `A lt B`
+- `A < B`
   - 1 if `A < B`, 0 otherwise
-- `A leq B`
+- `A <= B`
   - 1 if `A <= B`, 0 otherwise
 - `A has B`
   - 1 if `A` contains `B`, 0 otherwise
