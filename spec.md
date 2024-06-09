@@ -2,7 +2,7 @@
 
 ## Overview
 
-Expanse is a low-level language that compiles to Subleq.
+Expanse is a macro-assembly language for Subleq.
 
 ## Subleq
 
@@ -22,7 +22,7 @@ The next 3 words in memory are then taken as the next 3 arguments.
 
 ## General Syntax
 
-- Each subleq argument must either have a comma, a newline, or EOF after it.
+- Each Subleq argument must either have a comma, a newline, or EOF after it.
 - Lines may have more or less than 3 arguments on them.
 - Extra whitespace is allowed.
 - Identifiers must be of the form `/[_A-Za-z][_A-Za-z0-9]*/`
@@ -141,11 +141,11 @@ const arr2 = [arr1, 3]    ; equivalent to [0, 1, 2, 3]
   - The base numbers are printed in from diagnostic pseudo-macros, defaults to 10.
   - The possible values are 2, 8, 10, and 16
 - `BUILD_MODE`
-  - Specifies what build mode the subleq program is being built in, defaults to raw mode
+  - Specifies what build mode the Subleq program is being built in, defaults to raw mode
   - 0 if building in raw mode
   - 1 if building in relocatable mode
 - `ENDIAN`
-  - Specifies the endianness of the subleq program, defaults to little endian
+  - Specifies the endianness of the Subleq program, defaults to little endian
   - 0 if little endian
   - 1 is big endian
 - `WORD_SIZE`
