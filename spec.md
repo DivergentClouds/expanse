@@ -363,3 +363,7 @@ Comments are preceded by a semicolon and last until the end of the line.
 ```
 ; this is a comment
 ```
+
+## Other Notes
+
+- Compile-time integers are signed 64 bit.
