@@ -2,8 +2,7 @@
 
 ## Overview
 
-Expanse is a low-level language built on Subleq. A spiritual successor to
-[Metasubleq](https://github.com/DivergentClouds/metasubleq).
+Expanse is a low-level language that compiles to Subleq.
 
 ## Subleq
 
