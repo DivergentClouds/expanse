@@ -166,7 +166,7 @@ their location within the program.
 - `\`
   - Address of the next word, if used as a macro argument then the address points to after the macro
 - `$`
-  - Address of the current word
+  - Address of the current word, if used as a macro argument then the address points to the start of the macro
 
 ## Expressions
 
