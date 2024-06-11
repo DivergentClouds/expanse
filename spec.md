@@ -94,8 +94,8 @@ the array is expanded out, as if it was a list of its components.
 
 An array of characters may be constructed by surrounding them in double quotes. Characters are
 treated as integers encoded as UTF-8 unless passed to a pseudo-macro. To embed an 8 bit integer,
-it must be written in hex and prefixed with `\x` instead of `0x`. `\n` and `\t` can be used to
-insert a newline and a tab respectively.
+it must be written in hex and prefixed with `\x` instead of `0x`. `\"`, `\\`, `\n`, and `\t` can be
+used to insert a quote, a backslash, a newline, or a tab respectively.
 
 ```
 [0, 1, 2]
