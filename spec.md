@@ -133,7 +133,7 @@ const arr2 = [arr1, 3]    ; equivalent to [0, 1, 2, 3]
   - Must not be greater than the largest unsigned value that can fit in a word
   - Must be greater than 0
   - When in raw mode, if any location in the file is larger than this, an error will occur
-  - When in relocatable mode, if the file size in bytes is larger than this, an error will occur
+  - When in relocation mode, if the file size in bytes is larger than this, an error will occur
 - `MAX_DEPTH`
   - Maximum depth of macro calls, defaults to 1000
   - If this depth is exceeded an error will occur 
@@ -143,7 +143,7 @@ const arr2 = [arr1, 3]    ; equivalent to [0, 1, 2, 3]
 - `BUILD_MODE`
   - Specifies what build mode the Subleq program is being built in, defaults to raw mode
   - 0 if building in raw mode
-  - 1 if building in relocatable mode
+  - 1 if building in relocation mode
 - `ENDIAN`
   - Specifies the endianness of the Subleq program, defaults to little endian
   - 0 if little endian
