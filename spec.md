@@ -103,7 +103,7 @@ within a single line.
 [0, 1, 2]
 [0..2]
 "Hello, world!\n"
-["Hello, world!\n", [2..0]
+["Hello, world!\n", [2..0]]
 ```
 
 ### Usage
