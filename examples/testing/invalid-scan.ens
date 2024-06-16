@@ -1,0 +1,9 @@
+; This should fail to scan
+0x ; should give invalid integer
+' ; should give invalid lexeme
+ "\a" ; should give invalid string escape code
+ 0b ' ; should give 2 scan errors in 1 line
+	; tab found
+0	; tab found in middle of line
+"
+" ; newline found in string
