@@ -24,6 +24,7 @@ The next 3 words in memory are then taken as the next 3 arguments.
 
 - Each Subleq argument must either have a comma, a newline, or EOF after it.
 - Lines may have more or less than 3 arguments on them.
+- Tabs are not allowed.
 - Extra whitespace is allowed.
 - Identifiers must be of the form `/[_A-Za-z][_A-Za-z0-9]*/`
 - Identifiers must not conflict
@@ -95,7 +96,8 @@ the array is expanded out, as if it was a list of its components.
 An array of characters may be constructed by surrounding them in double quotes. Characters are
 treated as integers encoded as UTF-8 unless passed to a pseudo-macro. To embed an 8 bit integer,
 it must be written in hex and prefixed with `\x` instead of `0x`. `\"`, `\\`, `\n`, and `\t` can be
-used to insert a quote, a backslash, a newline, or a tab respectively.
+used to insert a quote, a backslash, a newline, or a tab respectively. Strings must be contained
+within a single line.
 
 ```
 [0, 1, 2]
