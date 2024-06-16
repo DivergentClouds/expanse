@@ -104,6 +104,8 @@ within a single line.
 [0..2]
 "Hello, world!\n"
 ["Hello, world!\n", [2..0]]
+["This is a workaround\n",
+"for multi-line strings.]
 ```
 
 ### Usage
