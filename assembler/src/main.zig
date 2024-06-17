@@ -24,7 +24,7 @@ const Options = struct {
     diagnostic_base: Base = .decimal,
     build_mode: BuildMode = .raw,
     endian: Endian = .little,
-    word_size: u4 = 2, // in range (2, 8)
+    word_size: u4 = 2, // in range (1, 8)
     max_filesize: u64 = 0,
 };
 
@@ -69,7 +69,7 @@ pub fn main() !void {
                 } else if (std.mem.eql(u8, option, "diagnostic_base")) {
                     options.diagnostic_base = try std.meta.intToEnum(Base, value);
                 } else if (std.mem.eql(u8, option, "word_size")) {
-                    if (value >= 2 and value <= 8) {
+                    if (value >= 1 and value <= 8) {
                         options.word_size = @intCast(value);
                     } else {
                         return error.InvalidWordSize;
