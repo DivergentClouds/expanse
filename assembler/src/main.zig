@@ -10,7 +10,7 @@ const Base = enum(u8) {
 
 const BuildMode = enum(u8) {
     raw = 0,
-    relocatable = 1,
+    relocation = 1,
     _,
 };
 
@@ -108,7 +108,7 @@ pub fn main() !void {
     if (out_file_name == null) {
         out_file_name = switch (options.build_mode) {
             .raw => "out.sl",
-            .relocatable => "out.rsl",
+            .relocation => "out.rsl",
             _ => unreachable,
         };
     }
