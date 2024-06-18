@@ -196,7 +196,17 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
         },
         '"' => {
             // scan string
-            try scanner.readString(&lexeme_byte_list);
+            scanner.readString(&lexeme_byte_list) catch |err| {
+                if (inErrorSet(ScanError, err)) {
+                    return .{
+                        .error_with_payload = .{
+                            .lexeme = try lexeme_byte_list.toOwnedSlice(),
+                            .location = starting_location,
+                            .err = @errorCast(err),
+                        },
+                    };
+                } else return err;
+            };
 
             const lexeme = try lexeme_byte_list.toOwnedSlice();
             errdefer scanner.allocator.free(lexeme);
@@ -211,17 +221,7 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
             var problem_offset: u64 = 0;
 
             parseString(unparsed_string, &string_array_list, &problem_offset) catch |err| {
-                var is_scan_error = false;
-                inline for (@typeInfo(ScanError).ErrorSet.?) |e| {
-                    const scan_error = @field(ScanError, e.name);
-
-                    if (scan_error == err) {
-                        is_scan_error = true;
-                        break;
-                    }
-                } else is_scan_error = false;
-
-                if (is_scan_error) {
+                if (inErrorSet(ScanError, err)) {
                     return .{
                         .error_with_payload = .{
                             .lexeme = lexeme,
@@ -335,6 +335,18 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
     };
 }
 
+fn inErrorSet(comptime ErrorSet: type, err: anyerror) bool {
+    comptime std.debug.assert(@typeInfo(ErrorSet).ErrorSet != null);
+
+    inline for (@typeInfo(ErrorSet).ErrorSet.?) |e| {
+        const error_field = @field(ErrorSet, e.name);
+
+        if (error_field == err) {
+            return true;
+        }
+    } else return false;
+}
+
 fn readString(
     scanner: *Scanner,
     array_list: *std.ArrayList(u8),
@@ -355,6 +367,8 @@ fn readString(
             else if (byte == '"')
                 break;
         }
+    } else {
+        return ScanError.UnclosedString;
     }
     scanner.incrementLocation(array_list.items.len - 1);
 }
@@ -536,6 +550,7 @@ pub const ScanError = error{
     InvalidStringEscapeCode,
     TabFound,
     NewlineFoundInString,
+    UnclosedString,
 };
 
 pub const ErrorWithPayload = struct {
