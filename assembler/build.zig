@@ -16,7 +16,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const exe = b.addExecutable(.{
-        .name = "assembler",
+        .name = "expanse",
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
@@ -63,4 +63,7 @@ pub fn build(b: *std.Build) void {
     // running the unit tests.
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_exe_unit_tests.step);
+
+    const check_step = b.step("check", "check for any compilation errors");
+    check_step.dependOn(&exe.step);
 }

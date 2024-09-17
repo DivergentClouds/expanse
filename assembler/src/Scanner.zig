@@ -1,4 +1,5 @@
 const std = @import("std");
+const common = @import("common.zig");
 
 const Scanner = @This();
 
@@ -35,30 +36,26 @@ pub fn deinitAll(
     scanner.list.deinit(scanner.allocator);
 }
 
-pub const ListKind = enum {
-    tokens,
-    errors,
-};
-
-pub const List = union(ListKind) {
+pub const List = union(enum) {
     tokens: std.ArrayList(Token),
-    errors: std.ArrayList(ErrorWithPayload),
+    errors: std.ArrayList(ScanErrorWithPayload),
 
     pub fn deinit(list: List, allocator: std.mem.Allocator) void {
         switch (list) {
-            inline else => |actual_list| {
-                for (actual_list.items) |item| {
+            .tokens => {
+                for (list.tokens.items) |item| {
                     item.deinit(allocator);
                 }
-                actual_list.deinit();
+                list.tokens.deinit();
             },
+            .errors => list.errors.deinit(),
         }
     }
 };
 
 pub const TokenOrError = union(enum) {
     token: Token,
-    error_with_payload: ErrorWithPayload,
+    error_with_payload: ScanErrorWithPayload,
 };
 
 const keywords = [_][]const u8{
@@ -84,46 +81,60 @@ pub fn scan(scanner: *Scanner) !List {
 
     var success = true;
 
-    while (try scanner.scanToken()) |token_or_error| {
-        switch (token_or_error) {
-            .token => |token| {
-                if (success) {
-                    try scanner.list.tokens.append(token);
-                } else {
-                    token.deinit(scanner.allocator);
-                }
-            },
-            .error_with_payload => |err| {
-                if (success) {
-                    success = false;
+    list_builder: switch (try scanner.scanToken()) {
+        .token => |token| {
+            if (success) {
+                try scanner.list.tokens.append(token);
+            } else {
+                token.deinit(scanner.allocator);
+            }
+            if (token.kind == .eof) {
+                break :list_builder;
+            } else {
+                continue :list_builder try scanner.scanToken();
+            }
+        },
+        .error_with_payload => |err| {
+            if (success) {
+                success = false;
 
-                    scanner.list.deinit(scanner.allocator);
-                    scanner.list = .{
-                        .errors = std.ArrayList(ErrorWithPayload).init(
-                            scanner.allocator,
-                        ),
-                    };
-                }
-                try scanner.list.errors.append(err);
-            },
-        }
+                scanner.list.deinit(scanner.allocator);
+                scanner.list = .{
+                    .errors = std.ArrayList(ScanErrorWithPayload).init(
+                        scanner.allocator,
+                    ),
+                };
+            }
+            try scanner.list.errors.append(err);
+
+            continue :list_builder try scanner.scanToken();
+        },
     }
 
     return scanner.list;
 }
 
-pub fn scanToken(scanner: *Scanner) !?TokenOrError {
+pub fn scanToken(scanner: *Scanner) !TokenOrError {
     const reader = scanner.source.reader();
 
     const starting_location = scanner.location;
 
     var lexeme_byte_list = std.ArrayList(u8).init(scanner.allocator);
-    errdefer lexeme_byte_list.deinit();
-
-    const byte = reader.readByte() catch
-        return null;
+    defer lexeme_byte_list.deinit();
 
     scanner.incrementLocation(1);
+
+    const byte = reader.readByte() catch {
+        return .{
+            .token = Token{
+                .kind = .eof,
+                .lexeme = "",
+                .literal = .{ .none = {} },
+                .location = scanner.location,
+            },
+        };
+    };
+
     try lexeme_byte_list.append(byte);
 
     var token_kind: TokenKind = undefined;
@@ -132,6 +143,7 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
         '\n' => {
             scanner.location.column = 0;
             scanner.location.line += 1;
+            scanner.location.index += 1;
 
             token_kind = .newline;
         },
@@ -143,30 +155,42 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
         '[' => token_kind = .right_bracket,
         ']' => token_kind = .left_bracket,
         '#' => token_kind = .hash,
-        '$' => token_kind = .current_word,
+        '$' => {
+            if (try scanner.match('$')) {
+                token_kind = .start_of_section;
+            } else {
+                token_kind = .current_word;
+            }
+        },
         '\\' => token_kind = .next_word,
         ':' => token_kind = .colon,
         '@' => token_kind = .at,
         '+' => token_kind = .plus,
         '-' => token_kind = .minus,
         '*' => token_kind = .times,
-        '/' => token_kind = .divide,
+        '/' => {
+            if (try scanner.match('/')) {
+                try scanner.skipComment();
+            } else {
+                token_kind = .divide;
+            }
+        },
         '%' => token_kind = .modulo,
         '~' => token_kind = .bit_not,
         '&' => token_kind = .bit_and,
         '|' => token_kind = .bit_or,
         '=' => {
             if (try scanner.match('=')) {
-                token_kind = .double_equals;
-            } else {
                 token_kind = .equals;
+            } else {
+                token_kind = .assign;
             }
         },
         '.' => {
             if (try scanner.match('.')) {
                 token_kind = .range;
             } else {
-                token_kind = .period;
+                token_kind = .import_access;
             }
         },
         '<' => {
@@ -191,28 +215,24 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
             if (try scanner.match('=')) {
                 token_kind = .not_equals;
             } else {
-                token_kind = .access;
+                token_kind = .array_access;
             }
         },
         '"' => {
             // scan string
             scanner.readString(&lexeme_byte_list) catch |err| {
-                if (inErrorSet(ScanError, err)) {
+                if (common.inErrorSet(ScanError, err)) {
                     return .{
                         .error_with_payload = .{
-                            .lexeme = try lexeme_byte_list.toOwnedSlice(),
-                            .location = starting_location,
+                            .payload = starting_location,
                             .err = @errorCast(err),
                         },
                     };
                 } else return err;
             };
 
-            const lexeme = try lexeme_byte_list.toOwnedSlice();
-            errdefer scanner.allocator.free(lexeme);
-
             const unparsed_string =
-                lexeme[1 .. lexeme.len - 1];
+                lexeme_byte_list.items[1 .. lexeme_byte_list.items.len - 1];
 
             // parse "\n" and such here
             var string_array_list = std.ArrayList(u8).init(scanner.allocator);
@@ -221,11 +241,10 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
             var problem_offset: u64 = 0;
 
             parseString(unparsed_string, &string_array_list, &problem_offset) catch |err| {
-                if (inErrorSet(ScanError, err)) {
+                if (common.inErrorSet(ScanError, err)) {
                     return .{
                         .error_with_payload = .{
-                            .lexeme = lexeme,
-                            .location = .{
+                            .payload = Location{
                                 .index = starting_location.index + problem_offset + 1, // index 0 is starting double quote
                                 .column = starting_location.column + problem_offset + 1,
                                 .line = starting_location.line,
@@ -235,6 +254,9 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
                     };
                 } else return err;
             };
+
+            const lexeme = try lexeme_byte_list.toOwnedSlice();
+            errdefer scanner.allocator.free(lexeme);
 
             // return string token here
             return .{
@@ -248,14 +270,10 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
                 },
             };
         },
-        ';' => {
-            try scanner.skipComment();
-        },
         '\t' => {
             return .{
                 .error_with_payload = .{
-                    .lexeme = try lexeme_byte_list.toOwnedSlice(),
-                    .location = starting_location,
+                    .payload = starting_location,
                     .err = ScanError.TabFound,
                 },
             };
@@ -265,12 +283,13 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
                 // integer literal
                 try scanner.readInteger(&lexeme_byte_list, byte);
 
-                const lexeme = try lexeme_byte_list.toOwnedSlice();
-
-                const integer = std.fmt.parseInt(i64, lexeme, 0) catch return .{
+                const integer = std.fmt.parseInt(
+                    i64,
+                    lexeme_byte_list.items,
+                    0,
+                ) catch return .{
                     .error_with_payload = .{
-                        .lexeme = lexeme,
-                        .location = starting_location,
+                        .payload = starting_location,
                         .err = ScanError.InvalidInteger,
                     },
                 };
@@ -278,7 +297,7 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
                 return .{
                     .token = .{
                         .kind = .integer,
-                        .lexeme = lexeme,
+                        .lexeme = try lexeme_byte_list.toOwnedSlice(),
                         .literal = .{
                             .integer = integer,
                         },
@@ -317,8 +336,7 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
             } else if (!std.ascii.isWhitespace(byte)) {
                 return .{
                     .error_with_payload = .{
-                        .lexeme = try lexeme_byte_list.toOwnedSlice(),
-                        .location = starting_location,
+                        .payload = starting_location,
                         .err = ScanError.InvalidLexeme,
                     },
                 };
@@ -333,18 +351,6 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
             .location = starting_location,
         },
     };
-}
-
-fn inErrorSet(comptime ErrorSet: type, err: anyerror) bool {
-    comptime std.debug.assert(@typeInfo(ErrorSet).ErrorSet != null);
-
-    inline for (@typeInfo(ErrorSet).ErrorSet.?) |e| {
-        const error_field = @field(ErrorSet, e.name);
-
-        if (error_field == err) {
-            return true;
-        }
-    } else return false;
 }
 
 fn readString(
@@ -494,27 +500,28 @@ fn readInteger(
         }
     }
 
-    while (reader.readByte() catch null) |byte| {
-        switch (byte) {
+    if (reader.readByte() catch null) |byte| {
+        integer_builder: switch (byte) {
             '0'...'9' => {
                 if (byte & 0xf < base) {
                     try array_list.append(byte);
+                    continue :integer_builder reader.readByte() catch
+                        break :integer_builder;
                 } else {
                     try source.seekBy(-1);
-                    break;
                 }
             },
             'a'...'f', 'A'...'F' => {
                 if (base == 16) {
                     try array_list.append(byte);
+                    continue :integer_builder reader.readByte() catch
+                        break :integer_builder;
                 } else {
                     try source.seekBy(-1);
-                    break;
                 }
             },
             else => {
                 try source.seekBy(-1);
-                break;
             },
         }
     }
@@ -529,14 +536,15 @@ fn readIdentifier(
 ) !void {
     const reader = scanner.source.reader();
 
-    while (reader.readByte() catch null) |byte| {
-        switch (byte) {
-            'a'...'z', 'A'...'Z', '0'...'9', '_' => {
-                try array_list.append(byte);
+    if (reader.readByte() catch null) |byte| {
+        identifier_builder: switch (byte) {
+            'a'...'z', 'A'...'Z', '0'...'9', '_' => |char| {
+                try array_list.append(char);
+                continue :identifier_builder reader.readByte() catch
+                    break :identifier_builder;
             },
             else => {
                 try scanner.source.seekBy(-1);
-                break;
             },
         }
     }
@@ -553,59 +561,51 @@ pub const ScanError = error{
     UnclosedString,
 };
 
-pub const ErrorWithPayload = struct {
-    lexeme: []const u8,
-    location: Location,
-    err: ScanError,
+pub const ScanErrorWithPayload = common.ErrorWithPayload(
+    Location,
+    ScanError,
+);
 
-    pub fn deinit(
-        error_with_payload: ErrorWithPayload,
-        allocator: std.mem.Allocator,
-    ) void {
-        allocator.free(error_with_payload.lexeme);
-    }
+pub fn printError(
+    scanner: Scanner,
+    error_with_payload: ScanErrorWithPayload,
+) !void {
+    const stderr = std.io.getStdErr().writer();
 
-    pub fn print(
-        error_with_payload: ErrorWithPayload,
-        scanner: Scanner,
-    ) !void {
-        const stderr = std.io.getStdErr().writer();
+    const location = error_with_payload.payload;
 
-        const location = error_with_payload.location;
+    const line_start_index = location.index - location.column;
+    try scanner.source.seekTo(line_start_index);
 
-        const line_start_index = location.index - location.column;
-        try scanner.source.seekTo(line_start_index);
+    var line_list = std.ArrayList(u8).init(scanner.allocator);
+    defer line_list.deinit();
 
-        var line_list = std.ArrayList(u8).init(scanner.allocator);
-        defer line_list.deinit();
-
-        // don't error on EOF
-        scanner.source.reader().streamUntilDelimiter(line_list.writer(), '\n', null) catch |err| {
-            switch (err) {
-                error.EndOfStream => {},
-                else => return err,
-            }
-        };
-
-        try stderr.print(
-            \\Error: {s}
-            \\{s} {d}:{d}
-            \\{s}
-            \\
-        , .{
-            @errorName(error_with_payload.err),
-            scanner.source_name,
-            location.line,
-            location.column,
-            line_list.items,
-        });
-
-        for (0..location.column) |_| {
-            try stderr.writeByte(' ');
+    // don't error on EOF
+    scanner.source.reader().streamUntilDelimiter(line_list.writer(), '\n', null) catch |err| {
+        switch (err) {
+            error.EndOfStream => {},
+            else => return err,
         }
-        try stderr.writeAll("^\n");
+    };
+
+    try stderr.print(
+        \\Error: {s}
+        \\{s} {d}:{d}
+        \\{s}
+        \\
+    , .{
+        @errorName(error_with_payload.err),
+        scanner.source_name,
+        location.line,
+        location.column,
+        line_list.items,
+    });
+
+    for (0..location.column) |_| {
+        try stderr.writeByte(' ');
     }
-};
+    try stderr.writeAll("^\n\n");
+}
 
 pub const TokenKind = enum {
     // non-operator symbol tokens
@@ -618,9 +618,10 @@ pub const TokenKind = enum {
     left_bracket, // [
     right_bracket, // ]
     hash,
-    equals,
-    period,
+    assign,
+    import_access, // .
     next_word, // >
+    start_of_section, // $$
     current_word, // $
     range,
     colon,
@@ -637,14 +638,14 @@ pub const TokenKind = enum {
     bit_not,
     bit_and,
     bit_or,
-    double_equals,
+    equals,
     not_equals,
     greater,
     greater_or_equal,
     less,
     less_or_equal,
     has,
-    access, // !
+    array_access, // !
 
     // literals
     identifier,
@@ -665,6 +666,9 @@ pub const TokenKind = enum {
     @"error",
     info,
     import,
+
+    // misc
+    eof,
 };
 
 pub const Location = struct {

@@ -1,32 +1,7 @@
 const std = @import("std");
+
 const Scanner = @import("Scanner.zig");
-
-const Base = enum(u8) {
-    binary = 2,
-    octal = 8,
-    decimal = 10,
-    hex = 16,
-};
-
-const BuildMode = enum(u8) {
-    raw = 0,
-    relocation = 1,
-    _,
-};
-
-const Endian = enum(u1) {
-    little = 0,
-    big = 1,
-};
-
-const Options = struct {
-    max_depth: u64 = 1000,
-    diagnostic_base: Base = .decimal,
-    build_mode: BuildMode = .raw,
-    endian: Endian = .little,
-    word_size: u4 = 2, // in range (1, 8)
-    max_filesize: u64 = 0,
-};
+const common = @import("common.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -37,7 +12,7 @@ pub fn main() !void {
     var in_file_name: ?[]const u8 = null;
     var out_file_name: ?[]const u8 = null;
 
-    var options = Options{};
+    var options = common.Options{};
 
     var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
@@ -51,10 +26,10 @@ pub fn main() !void {
                 return error.NoValueGivenToOption;
 
             if (std.mem.eql(u8, option, "build_mode")) {
-                options.build_mode = std.meta.stringToEnum(BuildMode, value_str) orelse
+                options.build_mode = std.meta.stringToEnum(common.BuildMode, value_str) orelse
                     return error.InvalidBuildMode;
             } else if (std.mem.eql(u8, option, "endian")) {
-                options.endian = std.meta.stringToEnum(Endian, value_str) orelse
+                options.endian = std.meta.stringToEnum(common.Endian, value_str) orelse
                     return error.InvalidEndianness;
             } else {
                 const value = try std.fmt.parseInt(u64, value_str, 0);
@@ -63,11 +38,18 @@ pub fn main() !void {
                     if (value == 0) {
                         return error.MaxFilesizeTooSmall;
                     }
+
                     options.max_filesize = value;
+                } else if (std.mem.eql(u8, option, "max_address")) {
+                    if (value == 0) {
+                        return error.MaxAddressTooSmall;
+                    }
+
+                    options.max_address = value;
                 } else if (std.mem.eql(u8, option, "max_depth")) {
                     options.max_depth = value;
                 } else if (std.mem.eql(u8, option, "diagnostic_base")) {
-                    options.diagnostic_base = try std.meta.intToEnum(Base, value);
+                    options.diagnostic_base = try std.meta.intToEnum(common.Base, value);
                 } else if (std.mem.eql(u8, option, "word_size")) {
                     if (value >= 1 and value <= 8) {
                         options.word_size = @intCast(value);
@@ -105,6 +87,14 @@ pub fn main() !void {
         return error.MaxFilesizeTooLarge;
     }
 
+    if (options.max_address == 0) { // cannot assign 0 with cli args
+        options.max_address = options.max_filesize;
+    }
+
+    if (options.build_mode == .raw and options.max_address != options.max_filesize) {
+        return error.RawModeMaximumMismatch;
+    }
+
     if (out_file_name == null) {
         out_file_name = switch (options.build_mode) {
             .raw => "out.sl",
@@ -122,9 +112,10 @@ pub fn main() !void {
 fn assemble(
     in_file_name: []const u8,
     out_file_name: []const u8,
-    options: Options,
+    options: common.Options,
     allocator: std.mem.Allocator,
 ) !void {
+    _ = options; // autofix
     var scanner = try Scanner.init(in_file_name, allocator);
     defer scanner.deinitAll();
 
@@ -133,16 +124,14 @@ fn assemble(
     switch (list) {
         .errors => {
             for (list.errors.items) |item| {
-                try item.print(scanner);
+                try scanner.printError(item);
             }
             return error.ScanError;
         },
         else => {},
     }
 
-    const token_list = list.tokens;
-    _ = token_list; // autofix
-
+    const tokens = list.tokens.items;
+    _ = tokens; // autofix
     _ = out_file_name; // autofix
-    _ = options; // autofix
 }
