@@ -2,7 +2,7 @@
 
 ## Overview
 
-Expanse is a macro-assembly language for Subleq.
+Expanse is a macro-assembly language for Subleq. It may also be used with other word-based OISCs.
 
 ## Subleq
 
@@ -26,11 +26,11 @@ The next 3 words in memory are then taken as the next 3 arguments.
 - Lines may have more or less than 3 arguments on them.
 - Tabs are not allowed.
 - Extra whitespace is allowed.
-- Identifiers must be of the form `/[_A-Za-z][_A-Za-z0-9]*/`
-- Identifiers must not conflict
+- Names must be of the form `/[_A-Za-z][_A-Za-z0-9]*/`
+- Names must not conflict
 - Numbers can be written in either binary, octal, decimal, or hex.
   - A base may be specified for non-decimal with a prefix of `0b`, `0o`, or `0x` respectively.
-- Blocks are denoted with curly brackets
+- Blocks are surrounded with curly brackets
 
 ## Macros
 
@@ -53,12 +53,12 @@ foo(arg1, arg2)
 
 ### Parameters
 
-Macro parameters are implicitly integers unless specified as an array. To specify that a value is
-an array, prefix the identifier with square brackets. This will infer the length when the macro is
+Macro parameters are implicitly integers unless specified as an array. To specify that a parameter
+is an array, prefix the name with square brackets. This will infer the length when the macro is
 called. To specify a specific length, enclose that length in the square brackets. Lengths must be
-greater than 0. A previous parameter to the macro may be used to define the length. It may then be
-accessed with the `!` operator. To access elements of an array without a known length you may use a
-`for` which is then unrolled when compiling. To get the length of an array as a value, you may
+greater than 0. A previous parameter to the macro may be used to define the length. Elements of an
+array may then be accessed with the `!` operator. To access elements of an array without a known
+length you may use a `for` which is then unrolled when compiling. To get the length of an array as a value, you may
 precede the array with `#`.
 
 ```
@@ -74,8 +74,7 @@ macro foo([3]bar, baz, []qud) {
 ### Arguments
 
 Macro arguments may be an integer or an array of integers. The length of each argument must match
-the length of the corresponding parameter. An integer being passed to a macro may be coerced to an
-array of length 1.
+the length of the corresponding parameter.
 
 ### Return
 
@@ -133,17 +132,21 @@ const arr2 = [arr1, 3]    ; equivalent to [0, 1, 2, 3]
 ### Built-in constants
 
 - `MAX_FILESIZE`
-  - Largest allowed output file size, defaults to the largest unsigned value that can fit in a word
-  - Must not be greater than the largest unsigned value that can fit in a word
+  - Largest allowed output file size, defaults to `MAX_UWORD`
+  - Must not be greater than `MAX_UWORD`
   - Must be greater than 0
-  - When in raw mode, if any location in the file is larger than this, an error will occur
-  - When in relocation mode, if the file size in bytes is larger than this, an error will occur
+- `MAX_ADDRESS`
+  - Largest allowed address in the output, defaults to `MAX_FILESIZE`
+  - Must not be greater than `MAX_UWORD`
+  - Must be greater than 0
+  - When in raw mode, this must equal `MAX_FILESIZE`
 - `MAX_DEPTH`
   - Maximum depth of macro calls, defaults to 1000
-  - If this depth is exceeded an error will occur 
+  - If this depth is exceeded an error will occur
 - `DIAGNOSTIC_BASE`
-  - The base numbers are printed in from diagnostic pseudo-macros, defaults to 10.
+  - The base that numbers are printed in from diagnostic pseudo-macros, defaults to 16.
   - The possible values are 2, 8, 10, and 16
+  - If not equal to 10, diagnostic pseudo-macros will prefix numbers with the relevant base prefix
 - `BUILD_MODE`
   - Specifies what build mode the Subleq program is being built in, defaults to raw mode
   - 0 if building in raw mode
@@ -156,6 +159,8 @@ const arr2 = [arr1, 3]    ; equivalent to [0, 1, 2, 3]
   - Word size in bytes, defaults to 2
   - Must be a value from 1 through 8
   - If an integer that can not fit in a word would be written to the output, an error will occur
+- `MAX_UWORD`
+  - Largest unsigned value that can fit in a word
 - `MAX_WORD`
   - Largest signed value that can fit in a word
 - `MIN_WORD`
@@ -170,6 +175,8 @@ their location within the program.
   - Address of the next word, if used as a macro argument then the address points to after the macro
 - `$`
   - Address of the current word, if used as a macro argument then the address points to the start of the macro
+- `$$`
+  - Address of the start of the current section
 
 ## Expressions
 
@@ -189,6 +196,7 @@ Expressions allow for the following operations:
   - Multiplication
 - `A / B`
   - Integer division
+  - Rounds towards 0
   - If `B` is equal to 0, an error will occur
 - `A % B`
   - Modulo
@@ -245,9 +253,9 @@ their precedence. The order of operations is as follows:
 ## Labels and Sections
 
 Labels are named integers used to mark an address. Labels can be used in any place an integer can.
-A label is created by an identifier followed by a colon. Labels may not be redefined. Labels are
-only defined in the scope they were created in. Labels are equivalent to a constant equal to the
-current address.
+A label is created by a name followed by a colon. Labels may not be redefined. Labels are only
+defined in the scope they were created in. Labels are equivalent to a constant equal to the current
+address.
 
 ```
 foo:
@@ -255,16 +263,17 @@ foo:
 bar(foo)
 ```
 
-A section is like a label but it starts at a specific address. Code continues from that address.
-Negative addresses are not allowed. Sections last until the start of the next section. The program
-starts with an unnamed section at address 0. To create a section, write a label with an `@` followed
-by an integer directly preceding the colon. If multiple sections' regions conflict, later sections
-take priority over earlier ones and a warning is issued.
+A section specifies a new address for compilation to continue at. Negative addresses are not
+allowed. Sections last until the start of the next section. The program starts with an unnamed
+section at address 0. To create a section, write a `@` followed by an integer preceding a colon. The
+`@` may optionally be preceeded by a name to create a label at that address. If multiple sections'
+regions conflict, later sections take priority over earlier ones and a warning is issued. When
+building in relocation mode, section information is emitted to the outputted binary.
 
 ```
-foo @ 0x100:      ; sets current address to 256
+foo @ 0x100:      ; sets current address to 256 and creates a label there
 
-bar @ $ + 64:    ; sets current address to the current address + 64
+@ $ + 64:         ; sets current address to the current address + 64
 ```
 
 ## Control Flow
@@ -272,8 +281,9 @@ bar @ $ + 64:    ; sets current address to the current address + 64
 ### For
 
 For loops allow you to repeat a block of code for each integer in an array. For loops are created
-with the `for` keyword followed by parentheses containing an identifier followed by the `in` keyword
-and an array. The code to be looped over follows as a block. The identifier declares a constant
+with the `for` keyword followed by parentheses containing an array. The array may optionally be
+preceded by a name followed by the `in` keyword. The code to be looped over follows as a block. The
+block is executed once for each element in the array. If a name is specified, it declares a constant
 local to each iteration of the loop equal to the current integer in the given array.
 
 ```
@@ -285,12 +295,13 @@ for (i in [1,3,5,7,9]) {
 To loop over a range, specify the range in the array.
 
 ```
-for (i in [0..5]) {
-  ; loops 6 times
+for ([0..5]) {
+  ; loops 6 times without keeping track of the current iteration number
 }
 ```
 
-The `break` keyword will exit the innermost loop.
+The `break` keyword will exit the innermost loop. The `continue` keyword will skip the rest of the
+current loop iteration.
 
 ### If
 
@@ -330,7 +341,7 @@ in arrays are treated as bytes.
 
 The `error` pseudo-macro allows you to halt compilation with a message. It takes a single array
 argument of indeterminate length. The array is then printed and compilation halts. Numbers in the
-array are printed according to `DIAGNOSTIC_BASE`. Each number is followed by a space.
+array are printed according to `DIAGNOSTIC_BASE`.
 
 ```
 error("error message")
@@ -340,7 +351,6 @@ error("error message")
 
 The `info` pseudo-macro allows you to print a message. It takes a single array of indeterminate
 length. The array is then printed. Numbers in the array are printed according to `DIAGNOSTIC_BASE`.
-Each number is followed by a space.
 
 ```
 info("message")
@@ -361,10 +371,10 @@ foo.baz
 
 ## Comments
 
-Comments are preceded by a semicolon and last until the end of the line.
+Comments are preceded by a two forward slashes and last until the end of the line.
 
 ```
-; this is a comment
+// this is a comment
 ```
 
 ## Other Notes
