@@ -1,3 +1,4 @@
 assembler/zig-cache/
 assembler/zig-out/
 assembler/.zig-cache/
+tests/

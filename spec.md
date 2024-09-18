@@ -22,8 +22,7 @@ The next 3 words in memory are then taken as the next 3 arguments.
 
 ## General Syntax
 
-- Each Subleq argument must either have a comma, a newline, or EOF after it.
-- Lines may have more or less than 3 arguments on them.
+- Each Subleq argument must either have a comma or EOF after it.
 - Tabs are not allowed.
 - Extra whitespace is allowed.
 - Names must be of the form `/[_A-Za-z][_A-Za-z0-9]*/`
@@ -37,9 +36,9 @@ The next 3 words in memory are then taken as the next 3 arguments.
 Macros are pieces of code that can be used multiple times. Macros are defined with the `macro`
 keyword followed by the name of the macro, and a comma separated list of parameters in parentheses.
 The body of the macro follows as a block. A single trailing comma is optionally allowed directly
-after the final parameter. Macro definitions must start at the beginning of a line. Macro
-definitions may optionally be preceded with the `pub` keyword, which allows it to be imported to
-an external file. Macros may only be defined at the top level of a file.
+after the final parameter. Macro definitions may optionally be preceded with the `pub` keyword, 
+which allows it to be imported to an external file. Macros may only be defined at the top level of
+a file.
 
 ```
 macro foo(param1, param2) {
@@ -79,8 +78,7 @@ the length of the corresponding parameter.
 ### Return
 
 You may exit a macro with the `return` keyword at any point within a macro. You may optionally
-follow it with a value to return that value. If a returned value is ignored, it will be treated
-as if it was written in code.
+follow it with a value to return that value.
 
 ## Arrays
 
@@ -115,12 +113,11 @@ it with square brackets with an integer inside.
 
 ## Variables and Constants
 
-Variables and constants are named values. Variables and constant definitions must be the only thing
-on the line where they are defined. A constant is defined with the `const` keyword followed by the
-name of the constant, and an equals sign followed by a value. A variable is defined the same way but
-with the `var` keyword. Top-level variable and constant definitions may optionally be be preceded
-with the `pub` keyword to allow it to be imported to an external file. A constant may not be
-redefined within its scope. A warning is issued for unused variables and constants that are not
+Variables and constants are named values. A constant is defined with the `const` keyword followed 
+by the name of the constant, and an equals sign followed by a value. A variable is defined the same
+way but with the `var` keyword. Top-level variable and constant definitions may optionally be be
+preceded with the `pub` keyword to allow it to be imported to an external file. A constant may not
+be redefined within its scope. A warning is issued for unused variables and constants that are not
 marked as `pub`.
 ```
 const foo = 0
@@ -356,17 +353,18 @@ length. The array is then printed. Numbers in the array are printed according to
 info("message")
 ```
 
-### Import
+## Import
 
-The `import` pseudo-macro allows you to include constants, variables and macros that are marked as
-`pub` from another file. It takes a single array of indeterminate length. The array must only
-contain characters. The result must then be assigned to a constant. To access the contents of an
-import, write the name of the constant followed by a period and then the name of variable, constant
-or macro.
+The `import` keyword allows you to include constants, variables, and macros that are marked as
+`pub` from another file. It is followed by an array consisting only of strings denoting the path to
+the file to import, relative to the current file. The array is then followed by the `as` keyword
+and the name to give the import. To access the definitions, write the name that the import was
+given followed by a period and then the name of the the variable, constant, or macro. When a file
+is imported, compile-time code in that file is run without writing anything to the output.
 
 ```
-const foo = import("bar")
-foo.baz
+import "foo" as bar
+bar.baz
 ```
 
 ## Comments
