@@ -1,0 +1,106 @@
+// lark is a variant of EBNF used by https://github.com/lark-parser/lark/
+
+%import common.WS
+%import common.ESCAPED_STRING -> STRING
+%ignore WS
+
+COMMENT: /\s*/ "//" /[^\n]/*
+%ignore COMMENT
+
+NAME         : /[_A-Za-z][_A-Za-z0-9]*/
+
+BINARY_INT   : /0b[01]+/
+OCTAL_INT    : /0o[0-7]+/
+DECIMAL_INT  : /[0-9]+/
+HEX_INT      : /0x[0-9a-fA-F]+/
+
+INTEGER      : BINARY_INT
+             | OCTAL_INT
+             | DECIMAL_INT
+             | HEX_INT
+
+
+program      : _statement*
+
+_statement   : expression ","
+             | label
+             | section
+             | _declaration
+             | conditional
+             | loop
+             | IMPORT
+             | keyword // keywords also exist in other rules
+
+block        : "{" _statement* "}"
+
+label        : NAME ":"
+section      : NAME? "@" expression ":"
+ 
+const_decl   : "pub"? "const" NAME "=" expression
+var_decl     : "pub"? "var" NAME "=" expression
+macro_decl   : "pub"? "macro" NAME param_list block
+
+_declaration : const_decl
+             | var_decl
+             | macro_decl
+
+IMPORT       : "import" STRING "as" NAME
+IMPORT_ACCESS: NAME "." NAME
+
+if           : "if" expression block
+elseif       : "elseif" expression block
+else         : "else" block
+conditional  : if elseif* else?
+
+loop         : "for" (NAME "in")? (array | NAME) block
+
+ARRAY_TYPE   : "[" (INTEGER | NAME)? "]"
+
+param        : ARRAY_TYPE? NAME
+param_list   : "(" (param ("," param)*)? ")"
+list_inner   : expression ("," expression)* ","?
+call         : NAME "(" list_inner? ")"
+array        : "[" list_inner "]"
+range        : expression ".." expression // NOTE: expressions in ranges must be integer equivalent
+
+
+keyword      : "return" expression?
+             | "break"
+             | "continue"
+
+UN_OPERATOR  : "~"
+
+BIN_OPERATOR: "+"
+             | "-"
+             | "*"
+             | "/"
+             | "%"
+             | "<<"
+             | ">>"
+             | "&"
+             | "|"
+             | "^"
+             | "=="
+             | "!="
+             | ">"
+             | ">="
+             | "<"
+             | "<="
+             | "has"
+             | "!"
+
+BUILTIN_VAR  : "\\"
+             | "$"
+             | "$$"
+
+expression   : NAME -> name
+             | INTEGER -> integer
+             | BUILTIN_VAR -> builtin_var
+             | call
+             | array
+             | range
+             | expression BIN_OPERATOR expression 
+             | UN_OPERATOR expression
+             | STRING -> string
+             | "(" expression ")"
+             | IMPORT_ACCESS -> import_access
