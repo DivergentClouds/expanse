@@ -35,10 +35,9 @@ The next 3 words in memory are then taken as the next 3 arguments.
 
 Macros are pieces of code that can be used multiple times. Macros are defined with the `macro`
 keyword followed by the name of the macro, and a comma separated list of parameters in parentheses.
-The body of the macro follows as a block. A single trailing comma is optionally allowed directly
-after the final parameter. Macro definitions may optionally be preceded with the `pub` keyword, 
-which allows it to be imported to an external file. Macros may only be defined at the top level of
-a file.
+The body of the macro follows as a block. Macro definitions may optionally be preceded with the
+`pub` keyword, which allows it to be imported to an external file. Macros may only be defined at the
+top level of a file.
 
 ```
 macro foo(param1, param2) {
@@ -55,18 +54,11 @@ foo(arg1, arg2)
 Macro parameters are implicitly integers unless specified as an array. To specify that a parameter
 is an array, prefix the name with square brackets. This will infer the length when the macro is
 called. To specify a specific length, enclose that length in the square brackets. Lengths must be
-greater than 0. A previous parameter to the macro may be used to define the length. Elements of an
-array may then be accessed with the `!` operator. To access elements of an array without a known
-length you may use a `for` which is then unrolled when compiling. To get the length of an array as a value, you may
-precede the array with `#`.
+greater than 0.
 
 ```
 macro foo([3]bar, baz, []qud) {
-  bar!0, bar!1, baz
-
-  for (value in qud) {
-    value, value + 1, #qud * 3
-  }
+  // code goes here
 }
 ```
 
@@ -87,7 +79,7 @@ Arrays may be constructed with a comma separated list of values surrounded by sq
 specify consecutive values in an array, you may use range syntax. A range is specified by writing
 the first integer followed by two periods and then the second integer. If the first value is less
 than the second, then the range is increasing. If the first value is greater, then the range is
-decreasing. Ranges are inclusive of both ends. If an array is one of the values in the list, then
+decreasing. Ranges are inclusive of both ends. If an array is one of the values in a list, then
 the array is expanded out, as if it was a list of its components.
 
 A string is an array of characters. Strings may be constructed by surrounding characters in double
@@ -190,10 +182,12 @@ Expressions allow for the following operations:
   - Addition
 - `A - B`
   - Subtraction
+- `-A`
+  - Negation
 - `A * B`
   - Multiplication
 - `A / B`
-  - Integer division
+  - Division
   - Rounds towards 0
   - If `B` is equal to 0, an error will occur
 - `A % B`
@@ -202,8 +196,10 @@ Expressions allow for the following operations:
   - If `B` is equal to 0, an error will occur
 - `A << B`
   - Left shift
+  - If `B` is negative, an error will occur
 - `A >> B`
   - Right shift
+  - If `B` is negative, an error will occur
 - `~A`
   - Bitwise not
 - `A & B`
@@ -212,10 +208,19 @@ Expressions allow for the following operations:
   - Bitwise or
 - `A ^ B`
   - Bitwise xor
+- `not A`
+  - Boolean not
+  - 1 if `A` equals 0, 0 otherwise
+- `A and B`
+  - Boolean and
+  - 1 if neither `A` or `B` equal 0, 0 otherwise
+- `A or B`
+  - Boolean or
+  - 1 if either `A` or `B` does not equal 0, 0 otherwise
 - `A == B`
-  - 1 if `A == B`, 0 otherwise
+  - 1 if `A` equals `B`, 0 otherwise
 - `A != B`
-  - 1 if `A != B`, 0 otherwise
+  - 1 if `A` does not equal `B`, 0 otherwise
 - `A > B`
   - 1 if `A > B`, 0 otherwise
 - `A >= B`
@@ -239,14 +244,15 @@ Operations are left-associative. Parentheses may be used to group operations and
 their precedence. The order of operations is as follows:
 - Parentheses
 - Array access
-- Not
-- Multiplication/Integer division/Modulo
+- Bitwise not/Boolean not/Negation
+- Multiplication/Division/Modulo
 - Addition/Subtraction
 - Left shift/Right shift
-- And
-- Or/Xor
+- Bitwise and/Bitwise or/Bitiwse xor
 - Has
 - Equality/Comparison
+- Boolean and
+- Boolean or
 
 ## Labels and Sections
 
@@ -257,8 +263,6 @@ address.
 
 ```
 foo:
-
-bar(foo)
 ```
 
 A section specifies a new address for compilation to continue at. Negative addresses are not
@@ -342,19 +346,19 @@ in arrays are treated as bytes.
 
 The `error` pseudo-macro allows you to halt compilation with a message. It takes a single array
 argument of indeterminate length. The array is then printed and compilation halts. Numbers in the
-array are printed according to `DIAGNOSTIC_BASE`.
+array are printed according to `DIAGNOSTIC_BASE`. Numbers are printed with a space before them.
 
 ```
-error("error message")
+error("error message\n")
 ```
 
 ### Info
 
 The `info` pseudo-macro allows you to print a message. It takes a single array of indeterminate
 length. The array is then printed. Numbers in the array are printed according to `DIAGNOSTIC_BASE`.
-
+Numbers are printed with a space before them.
 ```
-info("message")
+info(["message", 1, 2, "\n"])
 ```
 
 ## Import

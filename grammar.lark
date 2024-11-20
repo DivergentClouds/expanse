@@ -1,106 +1,125 @@
 // lark is a variant of EBNF used by https://github.com/lark-parser/lark/
+//
+// this file is for reference purposes only and should not be fed to a parser generator
+//
+// lower precedence rules are closer to the top of the file
 
-%import common.WS
 %import common.ESCAPED_STRING -> STRING
+
+WS             : /[ \f\r\n]/+ // tabs are forbidden
 %ignore WS
 
 COMMENT: /\s*/ "//" /[^\n]/*
 %ignore COMMENT
 
-NAME         : /[_A-Za-z][_A-Za-z0-9]*/
+// value terminals
+IDENTIFIER     : /[_A-Za-z][_A-Za-z0-9]*/
 
-BINARY_INT   : /0b[01]+/
-OCTAL_INT    : /0o[0-7]+/
-DECIMAL_INT  : /[0-9]+/
-HEX_INT      : /0x[0-9a-fA-F]+/
+BINARY_INT     : /0b[01]+/
+OCTAL_INT      : /0o[0-7]+/
+DECIMAL_INT    : /[0-9]+/
+HEX_INT        : /0x[0-9a-fA-F]+/
 
-INTEGER      : BINARY_INT
-             | OCTAL_INT
-             | DECIMAL_INT
-             | HEX_INT
+INTEGER        : BINARY_INT
+               | OCTAL_INT
+               | DECIMAL_INT
+               | HEX_INT
+
+NEXT_WORD      : "\\"
+CURRENT_WORD   : "$"
+SECTION_START  : "$$"
 
 
-program      : _statement*
+// root
+start         : statement*
 
-_statement   : expression ","
-             | label
-             | section
-             | _declaration
-             | conditional
-             | loop
-             | IMPORT
-             | keyword // keywords also exist in other rules
 
-block        : "{" _statement* "}"
+// statements
+statement      : expression ","
+               | LABEL -> label
+               | section
+               | declaration
+               | import
+               | conditional
+               | loop
+               | flow_change
 
-label        : NAME ":"
-section      : NAME? "@" expression ":"
+
+LABEL          : IDENTIFIER ":"
+
+section        : IDENTIFIER? "@" expression ":"
  
-const_decl   : "pub"? "const" NAME "=" expression
-var_decl     : "pub"? "var" NAME "=" expression
-macro_decl   : "pub"? "macro" NAME param_list block
+declaration    : const_decl
+               | var_decl
+               | macro_decl
 
-_declaration : const_decl
-             | var_decl
-             | macro_decl
+block          : "{" statement* "}"
 
-IMPORT       : "import" STRING "as" NAME
-IMPORT_ACCESS: NAME "." NAME
+ARRAY_TYPE     : "[" (INTEGER | IDENTIFIER)? "]"
+macro_params   : ARRAY_TYPE? IDENTIFIER ("," ARRAY_TYPE? IDENTIFIER)*
 
-if           : "if" expression block
-elseif       : "elseif" expression block
-else         : "else" block
-conditional  : if elseif* else?
+const_decl     : "pub"? "const" IDENTIFIER "=" expression
+var_decl       : "pub"? "var" IDENTIFIER "=" expression
+macro_decl     : "pub"? "macro" IDENTIFIER "(" macro_params? ")" block
 
-loop         : "for" (NAME "in")? (array | NAME) block
+import         : "import" value "as" IDENTIFIER
 
-ARRAY_TYPE   : "[" (INTEGER | NAME)? "]"
+if             : "if" expression block
+elseif         : "elseif" expression block
+else           : "else" block
+conditional    : if elseif* else?
 
-param        : ARRAY_TYPE? NAME
-param_list   : "(" (param ("," param)*)? ")"
-list_inner   : expression ("," expression)* ","?
-call         : NAME "(" list_inner? ")"
-array        : "[" list_inner "]"
-range        : expression ".." expression // NOTE: expressions in ranges must be integer equivalent
+loop           : "for" (IDENTIFIER "in")? expression block
 
 
-keyword      : "return" expression?
-             | "break"
-             | "continue"
+flow_change    : "return" expression?
+               | "break"
+               | "continue"
 
-UN_OPERATOR  : "~"
 
-BIN_OPERATOR: "+"
-             | "-"
-             | "*"
-             | "/"
-             | "%"
-             | "<<"
-             | ">>"
-             | "&"
-             | "|"
-             | "^"
-             | "=="
-             | "!="
-             | ">"
-             | ">="
-             | "<"
-             | "<="
-             | "has"
-             | "!"
+// expressions
+expression     : boolean_or
 
-BUILTIN_VAR  : "\\"
-             | "$"
-             | "$$"
+boolean_or     : boolean_and ("or" boolean_and)*
 
-expression   : NAME -> name
-             | INTEGER -> integer
-             | BUILTIN_VAR -> builtin_var
-             | call
-             | array
-             | range
-             | expression BIN_OPERATOR expression 
-             | UN_OPERATOR expression
-             | STRING -> string
-             | "(" expression ")"
-             | IMPORT_ACCESS -> import_access
+boolean_and    : comparison ("and" comparison)*
+
+comparison     : has (("==" | "!=" | ">" | ">=" | "<" | "<=") has)*
+               | has
+
+has            : bitwise ("has" bitwise)?
+
+bitwise        : bitshift (("&" | "|" | "^") bitshift)*
+
+bitshift       : additive (("<<" | ">>") additive)*
+
+additive       : multiplicative (("+" | "-") multiplicative)*
+
+multiplicative : unary (( "*" | "/" | "%" ) unary)*
+
+unary          : ("~" | "-" | "not") unary
+               | array_access
+
+array_access   : call ("!" call)?
+
+call           : IDENTIFIER ("." IDENTIFIER)? "(" macro_args? ")"
+               | import_access
+
+import_access  : IDENTIFIER "." IDENTIFIER
+               | value
+
+value          : INTEGER
+               | STRING
+               | IDENTIFIER
+               | NEXT_WORD
+               | CURRENT_WORD
+               | SECTION_START
+               | array_def
+               | "(" expression ")"
+
+
+array_def      : "[" array_element ("," array_element)* "]"
+array_element  : range | expression
+range          : expression ".." expression
+
+macro_args     : expression ("," expression)*
