@@ -85,6 +85,13 @@ pub fn ErrorWithPayload(
     };
 }
 
+pub fn readByteOrEof(file: std.fs.File) !?u8 {
+    return file.reader().readByte() catch |err| switch (err) {
+        error.EndOfStream => return null,
+        else => return err,
+    };
+}
+
 test {
     std.testing.refAllDecls(@This());
 }

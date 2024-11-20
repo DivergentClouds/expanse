@@ -73,6 +73,7 @@ const keywords = [_][]const u8{
     "info",
     "import",
     "has",
+    "as",
 };
 
 /// Returns `scanner.list`.
@@ -81,18 +82,17 @@ pub fn scan(scanner: *Scanner) !List {
 
     var success = true;
 
-    list_builder: switch (try scanner.scanToken()) {
+    list_builder: switch (try scanner.scanToken() orelse
+        return scanner.list) {
         .token => |token| {
             if (success) {
                 try scanner.list.tokens.append(token);
             } else {
                 token.deinit(scanner.allocator);
             }
-            if (token.kind == .eof) {
+
+            continue :list_builder try scanner.scanToken() orelse
                 break :list_builder;
-            } else {
-                continue :list_builder try scanner.scanToken();
-            }
         },
         .error_with_payload => |err| {
             if (success) {
@@ -107,16 +107,15 @@ pub fn scan(scanner: *Scanner) !List {
             }
             try scanner.list.errors.append(err);
 
-            continue :list_builder try scanner.scanToken();
+            continue :list_builder try scanner.scanToken() orelse
+                break :list_builder;
         },
     }
 
     return scanner.list;
 }
 
-pub fn scanToken(scanner: *Scanner) !TokenOrError {
-    const reader = scanner.source.reader();
-
+pub fn scanToken(scanner: *Scanner) !?TokenOrError {
     const starting_location = scanner.location;
 
     var lexeme_byte_list = std.ArrayList(u8).init(scanner.allocator);
@@ -124,16 +123,7 @@ pub fn scanToken(scanner: *Scanner) !TokenOrError {
 
     scanner.incrementLocation(1);
 
-    const byte = reader.readByte() catch {
-        return .{
-            .token = Token{
-                .kind = .eof,
-                .lexeme = "",
-                .literal = .{ .none = {} },
-                .location = scanner.location,
-            },
-        };
-    };
+    const byte = try common.readByteOrEof(scanner.source) orelse return null;
 
     try lexeme_byte_list.append(byte);
 
@@ -144,8 +134,6 @@ pub fn scanToken(scanner: *Scanner) !TokenOrError {
             scanner.location.column = 0;
             scanner.location.line += 1;
             scanner.location.index += 1;
-
-            token_kind = .newline;
         },
         ',' => token_kind = .comma,
         '{' => token_kind = .right_brace,
@@ -357,11 +345,9 @@ fn readString(
     scanner: *Scanner,
     array_list: *std.ArrayList(u8),
 ) !void {
-    const reader = scanner.source.reader();
-
     var prev_backslash: bool = false; // for escape codes
 
-    while (reader.readByte() catch null) |byte| {
+    while (try common.readByteOrEof(scanner.source)) |byte| {
         if (prev_backslash) {
             prev_backslash = false;
 
@@ -431,10 +417,7 @@ fn parseString(
 }
 
 fn match(scanner: Scanner, expected: u8) !bool {
-    const reader = scanner.source.reader();
-
-    const char = reader.readByte() catch
-        return false;
+    const char = try common.readByteOrEof(scanner.source);
 
     if (char != expected) {
         try scanner.source.seekBy(-1);
@@ -452,11 +435,9 @@ fn incrementLocation(scanner: *Scanner, amount: u64) void {
 fn skipComment(
     scanner: *Scanner,
 ) !void {
-    const reader = scanner.source.reader();
-
     var length: u64 = 0;
 
-    while (reader.readByte() catch null) |byte| {
+    while (try common.readByteOrEof(scanner.source)) |byte| {
         if (byte == '\n') {
             try scanner.source.seekBy(-1);
             break;
@@ -475,9 +456,7 @@ fn readInteger(
     array_list: *std.ArrayList(u8),
     first: u8,
 ) !void {
-    const source = scanner.source;
-    const reader = source.reader();
-
+    const reader = scanner.source.reader();
     var base: u8 = 10;
 
     if (first == '0') {
@@ -495,12 +474,12 @@ fn readInteger(
                 }
             },
             else => {
-                try source.seekBy(-1);
+                try scanner.source.seekBy(-1);
             },
         }
     }
 
-    if (reader.readByte() catch null) |byte| {
+    if (try common.readByteOrEof(scanner.source)) |byte| {
         integer_builder: switch (byte) {
             '0'...'9' => {
                 if (byte & 0xf < base) {
@@ -508,7 +487,7 @@ fn readInteger(
                     continue :integer_builder reader.readByte() catch
                         break :integer_builder;
                 } else {
-                    try source.seekBy(-1);
+                    try scanner.source.seekBy(-1);
                 }
             },
             'a'...'f', 'A'...'F' => {
@@ -517,11 +496,11 @@ fn readInteger(
                     continue :integer_builder reader.readByte() catch
                         break :integer_builder;
                 } else {
-                    try source.seekBy(-1);
+                    try scanner.source.seekBy(-1);
                 }
             },
             else => {
-                try source.seekBy(-1);
+                try scanner.source.seekBy(-1);
             },
         }
     }
@@ -536,7 +515,7 @@ fn readIdentifier(
 ) !void {
     const reader = scanner.source.reader();
 
-    if (reader.readByte() catch null) |byte| {
+    if (try common.readByteOrEof(scanner.source)) |byte| {
         identifier_builder: switch (byte) {
             'a'...'z', 'A'...'Z', '0'...'9', '_' => |char| {
                 try array_list.append(char);
@@ -609,7 +588,6 @@ pub fn printError(
 
 pub const TokenKind = enum {
     // non-operator symbol tokens
-    newline,
     comma,
     left_brace, // {
     right_brace, // }
@@ -666,9 +644,7 @@ pub const TokenKind = enum {
     @"error",
     info,
     import,
-
-    // misc
-    eof,
+    as,
 };
 
 pub const Location = struct {
