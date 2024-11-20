@@ -22,7 +22,7 @@ The next 3 words in memory are then taken as the next 3 arguments.
 
 ## General Syntax
 
-- Each Subleq argument must either have a comma or EOF after it.
+- Each Subleq argument must have a comma after it.
 - Tabs are not allowed.
 - Extra whitespace is allowed.
 - Names must be of the form `/[_A-Za-z][_A-Za-z0-9]*/`
@@ -42,7 +42,7 @@ a file.
 
 ```
 macro foo(param1, param2) {
-  ; code goes here
+  // code goes here
 }
 ```
 A macro that is defined may be used at any point after the definition.
@@ -90,11 +90,11 @@ than the second, then the range is increasing. If the first value is greater, th
 decreasing. Ranges are inclusive of both ends. If an array is one of the values in the list, then
 the array is expanded out, as if it was a list of its components.
 
-An array of characters may be constructed by surrounding them in double quotes. Characters are
-treated as integers encoded as UTF-8 unless passed to a pseudo-macro. To embed an 8 bit integer,
-it must be written in hex and prefixed with `\x` instead of `0x`. `\"`, `\\`, `\n`, and `\t` can be
-used to insert a quote, a backslash, a newline, or a tab respectively. Strings must be contained
-within a single line.
+A string is an array of characters. Strings may be constructed by surrounding characters in double
+quotes. Characters are treated as arrays of integers encoded as UTF-8 unless passed to a
+pseudo-macro or used with the `import` keyword. To embed an 8 bit integer, it must be written in hex
+and prefixed with `\x` instead of `0x`. `\"`, `\\`, `\n`, and `\t` can be used to insert a quote, a
+backslash, a newline, or a tab respectively. Strings must be contained within a single line.
 
 ```
 [0, 1, 2]
@@ -121,9 +121,9 @@ be redefined within its scope. A warning is issued for unused variables and cons
 marked as `pub`.
 ```
 const foo = 0
-const bar = foo           ; equivalent to 0
-const arr1 = [foo, 1, 2]  ; equivalent to [0, 1, 2]
-const arr2 = [arr1, 3]    ; equivalent to [0, 1, 2, 3]
+const bar = foo           // equivalent to 0
+const arr1 = [foo, 1, 2]  // equivalent to [0, 1, 2]
+const arr2 = [arr1, 3]    // equivalent to [0, 1, 2, 3]
 ```
 
 ### Built-in constants
@@ -171,7 +171,8 @@ their location within the program.
 - `\`
   - Address of the next word, if used as a macro argument then the address points to after the macro
 - `$`
-  - Address of the current word, if used as a macro argument then the address points to the start of the macro
+  - Address of the current word, if used as a macro argument then the address points to the start of
+  the macro
 - `$$`
   - Address of the start of the current section
 
@@ -197,7 +198,7 @@ Expressions allow for the following operations:
   - If `B` is equal to 0, an error will occur
 - `A % B`
   - Modulo
-  - Result is positive if the sign of `A` and `B` are the same, otherwise the result is negative
+  - The sign of the result is equal to the sign of `A`
   - If `B` is equal to 0, an error will occur
 - `A << B`
   - Left shift
@@ -268,9 +269,9 @@ regions conflict, later sections take priority over earlier ones and a warning i
 building in relocation mode, section information is emitted to the outputted binary.
 
 ```
-foo @ 0x100:      ; sets current address to 256 and creates a label there
+foo @ 0x100:      // sets current address to 256 and creates a label there
 
-@ $ + 64:         ; sets current address to the current address + 64
+@ $ + 64:         // sets current address to the current address + 64
 ```
 
 ## Control Flow
@@ -278,22 +279,22 @@ foo @ 0x100:      ; sets current address to 256 and creates a label there
 ### For
 
 For loops allow you to repeat a block of code for each integer in an array. For loops are created
-with the `for` keyword followed by parentheses containing an array. The array may optionally be
-preceded by a name followed by the `in` keyword. The code to be looped over follows as a block. The
-block is executed once for each element in the array. If a name is specified, it declares a constant
-local to each iteration of the loop equal to the current integer in the given array.
+with the `for` keyword followed by an array. The array may optionally be preceded by a name followed
+by the `in` keyword. The code to be looped over follows as a block. The block is executed once for
+each element in the array. If a name is specified, it declares a constant local to each iteration
+of the loop equal to the current integer in the given array.
 
 ```
-for (i in [1,3,5,7,9]) {
-  ; ...
+for i in [1,3,5,7,9] {
+  // ...
 }
 ```
 
 To loop over a range, specify the range in the array.
 
 ```
-for ([0..5]) {
-  ; loops 6 times without keeping track of the current iteration number
+for [0..5] {
+  // loops 6 times without keeping track of the current iteration number
 }
 ```
 
@@ -303,29 +304,32 @@ current loop iteration.
 ### If
 
 If statements allow you to conditionally execute a block of code. If statements are created with the
-`if` keyword followed by parentheses containing the condition. The code to be conditionally executed
-follows as a block. The block is only executed if the condition is non-zero. The condition must be
-an integer.
+`if` keyword followed a condition. The code to be conditionally executed follows as a block. The
+block is only executed if the condition is non-zero. The condition must be an integer.
 
 ```
-if (2 == 3) {
-  ; does not execute
+if 2 == 3 {
+  // does not execute
+}
+
+if [1, 2, 3] == [1, [2, 3]] {
+  // executes
 }
 ```
 
 An `elseif` or `else` statement may be placed after an `if` or `elseif` statement. These statements
 will only activate if all previous conditions in the chain were false. An `elseif` statement is
-created with the `elseif` keyword followed by parentheses containing the condition and a block.
-An `else` statement is created with the `else` keyword followed by a block. Both `elseif` and
-`else` statements may not be created unless they directly follow an `if` or `elseif` statement.
+created with the `elseif` keyword followed by the condition and a block. An `else` statement is
+created with the `else` keyword followed by a block. Both `elseif` and `else` statements may not be
+created unless they directly follow an `if` or `elseif` statement.
 
 ```
-if (2 == 3) {
-  ; does not execute
-} elseif (2 == 2) {
-  ; executes
+if 2 == 3 {
+  // does not execute
+} elseif 2 == 2 {
+  // executes
 } else {
-  ; does not execute
+  // does not execute
 }
 ```
 
