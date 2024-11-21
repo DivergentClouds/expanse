@@ -35,14 +35,14 @@ start         : statement*
 
 
 // statements
-statement      : expression ","
-               | LABEL -> label
+statement      : LABEL -> label
                | section
                | declaration
                | import
                | conditional
                | loop
                | flow_change
+               | expression ","
 
 
 LABEL          : IDENTIFIER ":"
