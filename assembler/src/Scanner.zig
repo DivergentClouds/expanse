@@ -7,6 +7,7 @@ source: std.fs.File,
 source_name: []const u8,
 location: Location,
 list: List,
+open_blocks: std.ArrayList(Location),
 allocator: std.mem.Allocator,
 
 /// caller owns result and must deinitialize with `deinitList`
@@ -23,8 +24,9 @@ pub fn init(
             .column = 0,
         },
         .list = .{
-            .tokens = std.ArrayList(Token).init(allocator),
+            .tokens = .init(allocator),
         },
+        .open_blocks = .init(allocator),
         .allocator = allocator,
     };
 }
@@ -69,6 +71,8 @@ const keywords = [_][]const u8{
     "if",
     "elseif",
     "else",
+    "break",
+    "continue",
     "error",
     "info",
     "import",
@@ -112,6 +116,25 @@ pub fn scan(scanner: *Scanner) !List {
         },
     }
 
+    for (scanner.open_blocks.items) |open_block| {
+        if (success) {
+            success = false;
+
+            scanner.list.deinit(scanner.allocator);
+            scanner.list = .{
+                .errors = std.ArrayList(ScanErrorWithPayload).init(
+                    scanner.allocator,
+                ),
+            };
+        }
+        try scanner.list.errors.append(
+            ScanErrorWithPayload{
+                .err = ScanError.UnclosedBlock,
+                .payload = open_block,
+            },
+        );
+    }
+
     return scanner.list;
 }
 
@@ -136,8 +159,20 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
             scanner.location.index += 1;
         },
         ',' => token_kind = .comma,
-        '{' => token_kind = .right_brace,
-        '}' => token_kind = .left_brace,
+        '{' => {
+            token_kind = .right_brace;
+            try scanner.open_blocks.append(starting_location);
+        },
+        '}' => {
+            token_kind = .left_brace;
+            _ = scanner.open_blocks.popOrNull() orelse
+                return TokenOrError{
+                .error_with_payload = .{
+                    .payload = starting_location,
+                    .err = ScanError.UnopenedBlock,
+                },
+            };
+        },
         '(' => token_kind = .right_paren,
         ')' => token_kind = .left_paren,
         '[' => token_kind = .right_bracket,
@@ -538,6 +573,8 @@ pub const ScanError = error{
     TabFound,
     NewlineFoundInString,
     UnclosedString,
+    UnclosedBlock,
+    UnopenedBlock,
 };
 
 pub const ScanErrorWithPayload = common.ErrorWithPayload(
@@ -641,6 +678,8 @@ pub const TokenKind = enum {
     @"if",
     elseif,
     @"else",
+    @"break",
+    @"continue",
     @"error",
     info,
     import,
