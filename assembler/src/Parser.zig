@@ -1,40 +1,96 @@
 const std = @import("std");
-const Scanner = @import("Scanner.zig");
+const Token = @import("Scanner.zig").Token;
 const common = @import("common.zig");
 
 const Parser = @This();
 
-result: ParseResult,
-
-token_iterator: common.ScalarIterator(Scanner.Token),
+token_iterator: common.ScalarIterator(Token),
 
 arena: std.heap.ArenaAllocator,
 allocator: std.mem.Allocator,
 
 is_child: bool,
+is_import: bool,
+
+result: ParseResult,
 
 pub const Node = struct {
     kind: NodeKind,
     literal: union(enum) {
+        string: []const u8,
+        identifier: []const u8,
         integer: i64,
-        character: u8,
         none,
     },
     children: std.ArrayList(Node),
 };
 
 pub const NodeKind = enum {
-    /// root of program
-    root,
+    /// root node, list of statements
+    start,
 
-    /// root of an import
-    imported_root,
+    // list of statements
+    block,
 
-    /// for operations with 2 arguments
-    binary_expression,
+    statement,
 
-    /// for operations with 1 argument
-    unary_operation,
+    // kinds of statements
+    expression,
+    label,
+    sections,
+    declaration,
+    import,
+    conditional,
+    loop,
+    flow_changes,
+
+    // kinds of declaration
+    const_decl,
+    var_decl,
+    macro_decl,
+
+    // used by macro_decl
+    macro_params,
+
+    // kinds of conditional
+    @"if",
+    elseif,
+    @"else",
+
+    // kinds of flow_changes
+    @"return",
+    @"break",
+    @"continue",
+
+    // kinds of expression
+    boolean_or,
+    boolean_and,
+    comparison,
+    has,
+    bitwise,
+    bitshift,
+    additive,
+    multiplicative,
+    unary,
+    array_access,
+    call,
+    import_access,
+    value,
+
+    // kinds of value
+    integer,
+    string,
+    identifier,
+    next_word,
+    current_word,
+    section_start,
+    array_def,
+
+    // used by array_def
+    range,
+
+    // used by call
+    macro_args,
 };
 
 pub const ParseResult = union(enum) {
@@ -44,56 +100,40 @@ pub const ParseResult = union(enum) {
 
 const NodeOrError = union(enum) {
     node: Node,
-    err: ParseErrorWithPayload,
+    error_with_payload: ParseErrorWithPayload,
 };
 
 pub const ParseErrorWithPayload = common.ErrorWithPayload(
-    Scanner.Token,
+    Token,
     ParseError,
 );
 
 pub const ParseError = error{
     UnexpectedLiteral,
-    NoEofToken,
+    UnfinishedStatement,
 };
 
 pub fn init(
     allocator: std.mem.Allocator,
-    tokens: []const Scanner.Token,
+    tokens: []const Token,
+    is_import: bool,
 ) Parser {
     var arena = std.heap.ArenaAllocator.init(allocator);
-    const child_allocator = arena.allocator();
+    const arena_allocator = arena.allocator();
 
     return .{
         .arena = arena,
-        .allocator = child_allocator,
+        .allocator = arena_allocator,
         .result = .{
             .ast = .{
-                .kind = .root,
+                .kind = .start,
                 .literal = .none,
-                .children = .init(child_allocator),
+                .children = .init(arena_allocator),
             },
         },
-        .token_iterator = common.scalarIterator(Scanner.Token, tokens),
+        .token_iterator = common.scalarIterator(Token, tokens),
         .is_child = false,
-    };
-}
-
-fn initImport(
-    parent: Parser,
-    tokens: []const Scanner.Token,
-) Parser {
-    return .{
-        .arena = parent.arena,
-        .allocator = parent.allocator,
-        .result = .{
-            .ast = Node{
-                .kind = .imported_root,
-                .children = .init(parent.allocator),
-            },
-        },
-        .token_iterator = common.scalarIterator(Scanner.Token, tokens),
-        .is_child = true,
+        .is_import = is_import,
     };
 }
 
@@ -103,109 +143,78 @@ pub fn deinit(parser: Parser) void {
 
 pub fn parse(parser: *Parser) !ParseResult {
     std.debug.assert(std.meta.activeTag(parser.result) == .ast);
-
     var success = true;
 
-    var token = parser.token_iterator.next() orelse
-        return parser.result;
-
-    ast_builder: switch (try parser.parseToken(token)) {
-        .node => |node| {
+    ast_builder: switch (parser.parseStatement()) {
+        .node => |statement| {
             if (success) {
-                try parser.result.ast.children.append(node);
+                try parser.result.tokens.append(statement);
             }
-
-            if (token.kind == .eof) {
-                break :ast_builder;
-            } else {
-                token = parser.token_iterator.next() orelse {
-                    continue :ast_builder NodeOrError{
-                        .err = .{
-                            .err = ParseError.NoEofToken,
-                            .payload = token,
-                        },
-                    };
-                };
-
-                continue :ast_builder try parser.parseToken(token);
-            }
+            // don't bother freeing the node if !success, we are using an arena
         },
-        .err => |err| {
+        .error_with_payload => |err| {
             if (success) {
                 success = false;
 
+                // don't bother freeing memory, we are using an arena
+                // might make this reset arena later
                 parser.result = .{
                     .errors = .init(parser.allocator),
                 };
             }
             try parser.result.errors.append(err);
 
-            token = parser.token_iterator.next() orelse {
-                continue :ast_builder NodeOrError{
-                    .err = .{
-                        .err = ParseError.NoEofToken,
-                        .payload = token,
-                    },
-                };
-            };
-
-            continue :ast_builder try parser.parseToken(token);
+            continue :ast_builder parser.parseStatement() orelse
+                break :ast_builder;
         },
     }
-
-    return parser.result;
 }
 
-fn parseToken(parser: *Parser, token: Scanner.Token) !NodeOrError {
-    const lookahead = parser.token_iterator.peek();
+fn parseStatement(parser: *Parser) ?NodeOrError {
+    const current_token = parser.token_iterator.next() orelse
+        return null;
 
-    var node: Node = undefined;
-    _ = &node; // autofix
+    const next_token = parser.token_iterator.peek() orelse
+        return .{ .error_with_payload = .{
+        .err = ParseError.UnfinishedStatement,
+        .payload = current_token,
+    } };
 
-    switch (token.kind) {
-        .integer => {
-            if (std.mem.indexOfScalar(
-                Scanner.TokenKind,
-                &integer_lhs_operators,
-                lookahead,
-            ) != null) {}
+    switch (current_token.kind) {
+        .identifier => {
+            switch (next_token.kind) {
+                .colon => {
+                    // label definition
+                },
+                .at => {
+                    // section definition
+                },
+                else => {
+                    // expression
+                },
+            }
         },
-        else => std.debug.panic(
-            "TODO: implement {s}\n",
-            .{@tagName(token.kind)},
-        ),
+        .@"var" => {},
+        .@"const" => {},
+        .macro => {},
+        .@"pub" => {},
+        .import => {},
+        .@"if" => {},
+        .elseif => {
+            // error here, handle elseif when generating if
+        },
+        .@"else" => {
+            // error here, handle else when generating if
+        },
+        .loop => {},
+        .@"return" => {},
+        .@"break" => {},
+        .@"continue" => {},
+        else => {
+            // expression
+        },
     }
 }
-
-fn parseBinaryOp(parser: *Parser, operation: Scanner.TokenKind, lhs: Node) Node {
-    _ = parser; // autofix
-    _ = operation; // autofix
-    _ = lhs; // autofix
-}
-
-const integer_lhs_operators = [_]Scanner.TokenKind{
-    .plus,
-    .minus,
-    .times,
-    .divide,
-    .modulo,
-    .left_shift,
-    .right_shift,
-    .bit_not,
-    .bit_and,
-    .bit_or,
-    .double_equals,
-    .not_equals,
-    .greater,
-    .greater_or_equal,
-    .less,
-    .less_or_equal,
-};
-
-const operators = [_]Scanner.TokenKind{
-    .has,
-    .access,
-} ++ integer_lhs_operators;
 
 test {
     std.testing.refAllDecls(Parser);
