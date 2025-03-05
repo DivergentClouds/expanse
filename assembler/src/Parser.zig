@@ -22,7 +22,7 @@ pub const Node = struct {
         integer: i64,
         none,
     },
-    children: std.ArrayList(Node),
+    children: ?std.ArrayList(Node),
 };
 
 pub const NodeKind = enum {
@@ -35,14 +35,15 @@ pub const NodeKind = enum {
     statement,
 
     // kinds of statements
-    expression,
     label,
-    sections,
+    section,
     declaration,
     import,
     conditional,
     loop,
     flow_changes,
+    expression,
+    output_expression, // an expression that becomes subleq code
 
     // kinds of declaration
     const_decl,
@@ -145,7 +146,7 @@ pub fn parse(parser: *Parser) !ParseResult {
     std.debug.assert(std.meta.activeTag(parser.result) == .ast);
     var success = true;
 
-    ast_builder: switch (parser.parseStatement()) {
+    ast_builder: switch (try parser.parseStatement()) {
         .node => |statement| {
             if (success) {
                 try parser.result.tokens.append(statement);
@@ -156,8 +157,8 @@ pub fn parse(parser: *Parser) !ParseResult {
             if (success) {
                 success = false;
 
-                // don't bother freeing memory, we are using an arena
-                // might make this reset arena later
+                _ = parser.arena.reset(.retain_capacity);
+
                 parser.result = .{
                     .errors = .init(parser.allocator),
                 };
@@ -170,7 +171,7 @@ pub fn parse(parser: *Parser) !ParseResult {
     }
 }
 
-fn parseStatement(parser: *Parser) ?NodeOrError {
+fn parseStatement(parser: *Parser) !?NodeOrError {
     const current_token = parser.token_iterator.next() orelse
         return null;
 
@@ -183,11 +184,9 @@ fn parseStatement(parser: *Parser) ?NodeOrError {
     switch (current_token.kind) {
         .identifier => {
             switch (next_token.kind) {
-                .colon => {
-                    // label definition
-                },
+                .colon => return .{ .node = parser.defineLabel(current_token) },
                 .at => {
-                    // section definition
+                    return try parser.defineSection();
                 },
                 else => {
                     // expression
@@ -214,6 +213,73 @@ fn parseStatement(parser: *Parser) ?NodeOrError {
             // expression
         },
     }
+}
+
+/// asserts that this is a valid label
+fn defineLabel(parser: *Parser, current_token: Token) Node {
+    _ = parser.token_iterator.skip();
+    return Node{
+        .kind = .label,
+        .literal = .{ .identifier = current_token.lexeme },
+        .children = null,
+    };
+}
+
+fn defineSection(parser: *Parser, current_token: Token) !NodeOrError {
+    var node: Node = .{
+        .kind = .section,
+        .literal = .{ .identifier = current_token.lexeme },
+        .children = .init(parser.allocator),
+    };
+
+    const location = try parser.defineExpression();
+    switch (location) {
+        .node => |expression| {
+            try node.children.?.append(expression);
+        },
+        .error_with_payload => |err| return err,
+    }
+
+    return node;
+}
+
+fn defineOutputExpression(parser: *Parser) !NodeOrError {
+    const expression_or_err = try parser.defineExpression();
+
+    switch (expression_or_err) {
+        .node => |expression| {
+            var children: std.ArrayList(Node) = .init(parser.allocator);
+            try children.append(expression);
+
+            if (parser.token_iterator.next()) |next_token| {
+                if (next_token.kind == .comma) {
+                    return .{
+                        .node = .{
+                            .kind = .output_expression,
+                            .literal = .none,
+                            .children = children,
+                        },
+                    };
+                } else {
+                    return NodeOrError{ .error_with_payload = .{
+                        .err = ParseError.ExpectedCommaFoundEof,
+                        .payload = next_token,
+                    } };
+                }
+            } else {
+                return NodeOrError{ .error_with_payload = .{
+                    .err = ParseError.ExpectedCommaFoundEof,
+                    .payload = .{},
+                } };
+            }
+        },
+        .error_with_payload => return expression_or_err,
+    }
+}
+
+fn defineExpression(parser: *Parser) !NodeOrError {
+    _ = parser; // autofix
+    @compileError("TODO");
 }
 
 test {
