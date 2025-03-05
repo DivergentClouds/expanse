@@ -25,11 +25,12 @@ The next 3 words in memory are then taken as the next 3 arguments.
 - Each Subleq argument must have a comma after it.
 - Tabs are not allowed.
 - Extra whitespace is allowed.
-- Names must be of the form `/[_A-Za-z][_A-Za-z0-9]*/`
-- Names must not conflict
+- Names must be of the form `/[_A-Za-z][_A-Za-z0-9]*/`.
+- Names may shadow other names from an outer scope.
+  - Names may not be shadowed from within the same scope.
 - Numbers can be written in either binary, octal, decimal, or hex.
   - A base may be specified for non-decimal with a prefix of `0b`, `0o`, or `0x` respectively.
-- Blocks are surrounded with curly brackets
+- Blocks are surrounded with curly brackets.
 
 ## Macros
 
@@ -44,7 +45,8 @@ macro foo(param1, param2) {
   // code goes here
 }
 ```
-A macro that is defined may be used at any point after the definition.
+Macros are called by writing the name of the macro followed by the arguments in parentheses. Each
+parameter must have a corresponding argument.
 ```
 foo(arg1, arg2)
 ```
@@ -70,7 +72,8 @@ the length of the corresponding parameter.
 ### Return
 
 You may exit a macro with the `return` keyword at any point within a macro. You may optionally
-follow it with a value to return that value.
+follow it with a value to return that value. Returned values may be used in the same manner as
+other kinds of values.
 
 ## Arrays
 
@@ -140,10 +143,6 @@ const arr2 = [arr1, 3]    // equivalent to [0, 1, 2, 3]
   - Specifies what build mode the Subleq program is being built in, defaults to raw mode
   - 0 if building in raw mode
   - 1 if building in relocation mode
-- `ENDIAN`
-  - Specifies the endianness of the Subleq program, defaults to little endian
-  - 0 if little endian
-  - 1 is big endian
 - `WORD_SIZE`
   - Word size in bytes, defaults to 2
   - Must be a value from 1 through 8
