@@ -135,3 +135,8 @@ fn assemble(
     _ = tokens; // autofix
     _ = out_file_name; // autofix
 }
+
+test {
+    _ = @import("Scanner.zig");
+    _ = @import("Parser.zig");
+}

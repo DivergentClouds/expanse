@@ -15,17 +15,17 @@ is_import: bool,
 result: ParseResult,
 
 pub const Node = struct {
-    kind: NodeKind,
+    kind: Kind,
     literal: union(enum) {
         string: []const u8,
         identifier: []const u8,
         integer: i64,
         none,
     },
-    children: ?std.ArrayList(Node),
+    children: ?std.ArrayListUnmanaged(Node),
 };
 
-pub const NodeKind = enum {
+pub const Kind = enum {
     /// root node, list of statements
     start,
 
@@ -49,6 +49,9 @@ pub const NodeKind = enum {
     const_decl,
     var_decl,
     macro_decl,
+
+    // used by declarations
+    @"pub",
 
     // used by macro_decl
     macro_params,
@@ -96,7 +99,7 @@ pub const NodeKind = enum {
 
 pub const ParseResult = union(enum) {
     ast: Node,
-    errors: std.ArrayList(ParseErrorWithPayload),
+    errors: std.ArrayListUnmanaged(ParseErrorWithPayload),
 };
 
 const NodeOrError = union(enum) {
@@ -110,7 +113,7 @@ pub const ParseErrorWithPayload = common.ErrorWithPayload(
 );
 
 pub const ParseError = error{
-    UnexpectedLiteral,
+    UnexpectedToken,
     UnfinishedStatement,
 };
 
@@ -129,7 +132,7 @@ pub fn init(
             .ast = .{
                 .kind = .start,
                 .literal = .none,
-                .children = .init(arena_allocator),
+                .children = .empty,
             },
         },
         .token_iterator = common.scalarIterator(Token, tokens),
@@ -160,10 +163,10 @@ pub fn parse(parser: *Parser) !ParseResult {
                 _ = parser.arena.reset(.retain_capacity);
 
                 parser.result = .{
-                    .errors = .init(parser.allocator),
+                    .errors = .empty,
                 };
             }
-            try parser.result.errors.append(err);
+            try parser.result.errors.append(parser.allocator, err);
 
             continue :ast_builder parser.parseStatement() orelse
                 break :ast_builder;
@@ -175,35 +178,55 @@ fn parseStatement(parser: *Parser) !?NodeOrError {
     const current_token = parser.token_iterator.next() orelse
         return null;
 
-    const next_token = parser.token_iterator.peek() orelse
-        return .{ .error_with_payload = .{
-        .err = ParseError.UnfinishedStatement,
-        .payload = current_token,
-    } };
-
     switch (current_token.kind) {
         .identifier => {
+            // use peek() and not next() in case the next_token is part of an expression
+            const next_token = parser.token_iterator.peek() orelse
+                return .{ .error_with_payload = .{
+                    .err = ParseError.UnfinishedStatement,
+                    .payload = current_token,
+                } };
+
             switch (next_token.kind) {
                 .colon => return .{ .node = parser.defineLabel(current_token) },
                 .at => {
                     return try parser.defineSection();
                 },
                 else => {
-                    // expression
+                    return try parser.defineOutputExpression(current_token);
                 },
             }
         },
-        .@"var" => {},
-        .@"const" => {},
-        .macro => {},
-        .@"pub" => {},
-        .import => {},
-        .@"if" => {},
-        .elseif => {
-            // error here, handle elseif when generating if
+
+        .@"const" => {
+            return try parser.defineConst();
         },
-        .@"else" => {
-            // error here, handle else when generating if
+        .@"var" => {
+            return try parser.defineVar();
+        },
+        .macro => {
+            return try parser.defineMacro();
+        },
+        .@"pub" => {
+            return try parser.definePub(current_token);
+        },
+        .import => {
+            return try parser.defineImport(current_token);
+        },
+        .@"if" => {},
+        .elseif, .@"else" => {
+            // handle elseif and else when generating if
+            return .{
+                .error_with_payload = .{
+                    .payload = .{
+                        .kind = current_token.kind,
+                        .lexeme = current_token.lexeme,
+                        .literal = current_token.literal,
+                        .location = current_token.location,
+                    },
+                    .err = ParseError.UnexpectedToken,
+                },
+            };
         },
         .loop => {},
         .@"return" => {},
@@ -217,7 +240,7 @@ fn parseStatement(parser: *Parser) !?NodeOrError {
 
 /// asserts that this is a valid label
 fn defineLabel(parser: *Parser, current_token: Token) Node {
-    _ = parser.token_iterator.skip();
+    _ = parser.token_iterator.skip(); // skip the : following the identifier
     return Node{
         .kind = .label,
         .literal = .{ .identifier = current_token.lexeme },
@@ -232,7 +255,7 @@ fn defineSection(parser: *Parser, current_token: Token) !NodeOrError {
         .children = .init(parser.allocator),
     };
 
-    const location = try parser.defineExpression();
+    const location = try parser.defineExpression(null);
     switch (location) {
         .node => |expression| {
             try node.children.?.append(expression);
@@ -243,13 +266,111 @@ fn defineSection(parser: *Parser, current_token: Token) !NodeOrError {
     return node;
 }
 
-fn defineOutputExpression(parser: *Parser) !NodeOrError {
-    const expression_or_err = try parser.defineExpression();
+fn definePub(parser: *Parser, current_token: Token) !NodeOrError {
+    const new_token = parser.token_iterator.next() orelse
+        return .{ .error_with_payload = .{
+            .err = ParseError.UnfinishedStatement,
+            .payload = current_token,
+        } };
+
+    const decl_or_error: NodeOrError = switch (new_token.kind) {
+        .@"const" => try parser.defineConst(),
+        .@"var" => try parser.defineVar(),
+        .macro => try parser.defineMacro(),
+        else => return .{
+            .error_with_payload = .{
+                .err = ParseError.UnexpectedToken,
+                .payload = new_token,
+            },
+        },
+    };
+
+    switch (decl_or_error) {
+        .node => |node| {
+            var children: std.ArrayListUnmanaged(Node) = .initCapacity(parser.allocator, 1);
+            children.appendAssumeCapacity(node);
+
+            return .{
+                .node = .{
+                    .kind = .@"pub",
+                    .literal = .none,
+                    .children = children,
+                },
+            };
+        },
+        .error_with_payload => |error_with_payload| return .{
+            .error_with_payload = .{
+                .err = error_with_payload.err,
+                .payload = new_token,
+            },
+        },
+    }
+}
+
+fn defineImport(parser: *Parser, current_token: Token) !NodeOrError {
+    const filename_node: Node = switch (try parser.defineExpression(null)) {
+        .node => |node| node,
+        .error_with_payload => |err| return .{ .error_with_payload = err },
+    };
+
+    const as = parser.token_iterator.next() orelse
+        return .{
+            .error_with_payload = .{
+                .payload = current_token,
+                .err = ParseError.UnfinishedStatement,
+            },
+        };
+
+    if (as.kind != .as)
+        return .{
+            .error_with_payload = .{
+                .payload = as,
+                .err = ParseError.UnexpectedToken,
+            },
+        };
+
+    const import_identifier = parser.token_iterator.next() orelse
+        return .{
+            .error_with_payload = .{
+                .payload = current_token,
+                .err = ParseError.UnfinishedStatement,
+            },
+        };
+
+    if (import_identifier.kind != .identifier)
+        return .{
+            .error_with_payload = .{
+                .payload = import_identifier,
+                .err = ParseError.UnexpectedToken,
+            },
+        };
+
+    const identifier_node: Node = .{
+        .kind = .identifier,
+        .literal = import_identifier.literal,
+        .children = null,
+    };
+
+    var children: std.ArrayListUnmanaged(Node) = .initCapacity(parser.allocator, 2);
+    children.appendAssumeCapacity(identifier_node);
+    children.appendAssumeCapacity(filename_node);
+
+    return .{
+        .node = .{
+            .kind = .import,
+            .literal = .node,
+            .children = children,
+        },
+    };
+}
+
+fn defineOutputExpression(parser: *Parser, initial_token: ?Token) !NodeOrError {
+    const expression_or_err = try parser.defineExpression(initial_token);
 
     switch (expression_or_err) {
         .node => |expression| {
-            var children: std.ArrayList(Node) = .init(parser.allocator);
-            try children.append(expression);
+            var children: std.ArrayListUnmanaged(Node) = .initCapacity(parser.allocator, 1);
+            try children.appendAssumeCapacity(parser.allocator, expression);
 
             if (parser.token_iterator.next()) |next_token| {
                 if (next_token.kind == .comma) {
@@ -261,13 +382,13 @@ fn defineOutputExpression(parser: *Parser) !NodeOrError {
                         },
                     };
                 } else {
-                    return NodeOrError{ .error_with_payload = .{
+                    return .{ .error_with_payload = .{
                         .err = ParseError.ExpectedCommaFoundEof,
                         .payload = next_token,
                     } };
                 }
             } else {
-                return NodeOrError{ .error_with_payload = .{
+                return .{ .error_with_payload = .{
                     .err = ParseError.ExpectedCommaFoundEof,
                     .payload = .{},
                 } };
@@ -277,9 +398,9 @@ fn defineOutputExpression(parser: *Parser) !NodeOrError {
     }
 }
 
-fn defineExpression(parser: *Parser) !NodeOrError {
-    _ = parser; // autofix
-    @compileError("TODO");
+fn defineExpression(parser: *Parser, initial_token: ?Token) !NodeOrError {
+    _ = parser;
+    _ = initial_token;
 }
 
 test {

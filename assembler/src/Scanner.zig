@@ -7,7 +7,7 @@ source: std.fs.File,
 source_name: []const u8,
 location: Location,
 list: List,
-open_blocks: std.ArrayList(Location),
+open_blocks: std.ArrayListUnmanaged(Location),
 allocator: std.mem.Allocator,
 
 /// caller owns result and must deinitialize with `deinitList`
@@ -24,33 +24,33 @@ pub fn init(
             .column = 0,
         },
         .list = .{
-            .tokens = .init(allocator),
+            .tokens = .empty,
         },
-        .open_blocks = .init(allocator),
+        .open_blocks = .empty,
         .allocator = allocator,
     };
 }
 
 pub fn deinitAll(
-    scanner: Scanner,
+    scanner: *Scanner,
 ) void {
     scanner.source.close();
     scanner.list.deinit(scanner.allocator);
 }
 
 pub const List = union(enum) {
-    tokens: std.ArrayList(Token),
-    errors: std.ArrayList(ScanErrorWithPayload),
+    tokens: std.ArrayListUnmanaged(Token),
+    errors: std.ArrayListUnmanaged(ScanErrorWithPayload),
 
-    pub fn deinit(list: List, allocator: std.mem.Allocator) void {
-        switch (list) {
+    pub fn deinit(list: *List, allocator: std.mem.Allocator) void {
+        switch (list.*) {
             .tokens => {
                 for (list.tokens.items) |item| {
                     item.deinit(allocator);
                 }
-                list.tokens.deinit();
+                list.tokens.deinit(allocator);
             },
-            .errors => list.errors.deinit(),
+            .errors => list.errors.deinit(allocator),
         }
     }
 };
@@ -90,7 +90,7 @@ pub fn scan(scanner: *Scanner) !List {
         return scanner.list) {
         .token => |token| {
             if (success) {
-                try scanner.list.tokens.append(token);
+                try scanner.list.tokens.append(scanner.allocator, token);
             } else {
                 token.deinit(scanner.allocator);
             }
@@ -104,12 +104,10 @@ pub fn scan(scanner: *Scanner) !List {
 
                 scanner.list.deinit(scanner.allocator);
                 scanner.list = .{
-                    .errors = std.ArrayList(ScanErrorWithPayload).init(
-                        scanner.allocator,
-                    ),
+                    .errors = .empty,
                 };
             }
-            try scanner.list.errors.append(err);
+            try scanner.list.errors.append(scanner.allocator, err);
 
             continue :list_builder try scanner.scanToken() orelse
                 break :list_builder;
@@ -122,12 +120,11 @@ pub fn scan(scanner: *Scanner) !List {
 
             scanner.list.deinit(scanner.allocator);
             scanner.list = .{
-                .errors = std.ArrayList(ScanErrorWithPayload).init(
-                    scanner.allocator,
-                ),
+                .errors = .empty,
             };
         }
         try scanner.list.errors.append(
+            scanner.allocator,
             ScanErrorWithPayload{
                 .err = ScanError.UnclosedBlock,
                 .payload = open_block,
@@ -141,16 +138,16 @@ pub fn scan(scanner: *Scanner) !List {
 pub fn scanToken(scanner: *Scanner) !?TokenOrError {
     const starting_location = scanner.location;
 
-    var lexeme_byte_list = std.ArrayList(u8).init(scanner.allocator);
-    defer lexeme_byte_list.deinit();
+    var lexeme_byte_list: std.ArrayListUnmanaged(u8) = .empty;
+    defer lexeme_byte_list.deinit(scanner.allocator);
 
     scanner.incrementLocation(1);
 
     const byte = try common.readByteOrEof(scanner.source) orelse return null;
 
-    try lexeme_byte_list.append(byte);
+    try lexeme_byte_list.append(scanner.allocator, byte);
 
-    var token_kind: TokenKind = undefined;
+    var token_kind: Kind = undefined;
 
     switch (byte) {
         '\n' => {
@@ -161,17 +158,17 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
         ',' => token_kind = .comma,
         '{' => {
             token_kind = .right_brace;
-            try scanner.open_blocks.append(starting_location);
+            try scanner.open_blocks.append(scanner.allocator, starting_location);
         },
         '}' => {
             token_kind = .left_brace;
-            _ = scanner.open_blocks.popOrNull() orelse
+            _ = scanner.open_blocks.pop() orelse
                 return TokenOrError{
-                .error_with_payload = .{
-                    .payload = starting_location,
-                    .err = ScanError.UnopenedBlock,
-                },
-            };
+                    .error_with_payload = .{
+                        .payload = starting_location,
+                        .err = ScanError.UnopenedBlock,
+                    },
+                };
         },
         '(' => token_kind = .right_paren,
         ')' => token_kind = .left_paren,
@@ -258,12 +255,12 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
                 lexeme_byte_list.items[1 .. lexeme_byte_list.items.len - 1];
 
             // parse "\n" and such here
-            var string_array_list = std.ArrayList(u8).init(scanner.allocator);
-            defer string_array_list.deinit();
+            var string_array_list: std.ArrayListUnmanaged(u8) = .empty;
+            defer string_array_list.deinit(scanner.allocator);
 
             var problem_offset: u64 = 0;
 
-            parseString(unparsed_string, &string_array_list, &problem_offset) catch |err| {
+            parseString(unparsed_string, &string_array_list, &problem_offset, scanner.allocator) catch |err| {
                 if (common.inErrorSet(ScanError, err)) {
                     return .{
                         .error_with_payload = .{
@@ -278,7 +275,7 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
                 } else return err;
             };
 
-            const lexeme = try lexeme_byte_list.toOwnedSlice();
+            const lexeme = try lexeme_byte_list.toOwnedSlice(scanner.allocator);
             errdefer scanner.allocator.free(lexeme);
 
             // return string token here
@@ -287,7 +284,7 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
                     .kind = .string,
                     .lexeme = lexeme,
                     .literal = .{
-                        .string = try string_array_list.toOwnedSlice(),
+                        .string = try string_array_list.toOwnedSlice(scanner.allocator),
                     },
                     .location = starting_location,
                 },
@@ -320,7 +317,7 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
                 return .{
                     .token = .{
                         .kind = .integer,
-                        .lexeme = try lexeme_byte_list.toOwnedSlice(),
+                        .lexeme = try lexeme_byte_list.toOwnedSlice(scanner.allocator),
                         .literal = .{
                             .integer = integer,
                         },
@@ -332,13 +329,15 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
                 try scanner.source.seekBy(-1);
                 try scanner.readIdentifier(&lexeme_byte_list);
 
-                const lexeme = try lexeme_byte_list.toOwnedSlice();
+                // no need to errdefer to free since there are no states where we return an error
+                // after this point
+                const lexeme = try lexeme_byte_list.toOwnedSlice(scanner.allocator);
 
                 for (keywords) |keyword| {
                     if (std.mem.eql(u8, lexeme, keyword)) {
                         return .{
                             .token = .{
-                                .kind = std.meta.stringToEnum(TokenKind, lexeme) orelse unreachable,
+                                .kind = std.meta.stringToEnum(Kind, lexeme) orelse unreachable,
                                 .lexeme = lexeme,
                                 .literal = .{ .none = {} },
                                 .location = starting_location,
@@ -369,7 +368,7 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
     return .{
         .token = .{
             .kind = token_kind,
-            .lexeme = try lexeme_byte_list.toOwnedSlice(),
+            .lexeme = try lexeme_byte_list.toOwnedSlice(scanner.allocator),
             .literal = .{ .none = {} },
             .location = starting_location,
         },
@@ -378,7 +377,7 @@ pub fn scanToken(scanner: *Scanner) !?TokenOrError {
 
 fn readString(
     scanner: *Scanner,
-    array_list: *std.ArrayList(u8),
+    array_list: *std.ArrayListUnmanaged(u8),
 ) !void {
     var prev_backslash: bool = false; // for escape codes
 
@@ -386,9 +385,9 @@ fn readString(
         if (prev_backslash) {
             prev_backslash = false;
 
-            try array_list.append(byte);
+            try array_list.append(scanner.allocator, byte);
         } else {
-            try array_list.append(byte);
+            try array_list.append(scanner.allocator, byte);
             if (byte == '\\')
                 prev_backslash = true
             else if (byte == '"')
@@ -402,8 +401,9 @@ fn readString(
 
 fn parseString(
     unparsed_string: []const u8,
-    parsed_string: *std.ArrayList(u8),
+    parsed_string: *std.ArrayListUnmanaged(u8),
     index: *u64, // starts at 0
+    allocator: std.mem.Allocator,
 ) !void {
     const index_max = unparsed_string.len;
 
@@ -417,10 +417,10 @@ fn parseString(
 
             byte = unparsed_string[index.*];
             switch (byte) {
-                '\\' => try parsed_string.append('\\'),
-                'n' => try parsed_string.append('\n'),
-                't' => try parsed_string.append('\t'),
-                '"' => try parsed_string.append('"'),
+                '\\' => try parsed_string.append(allocator, '\\'),
+                'n' => try parsed_string.append(allocator, '\n'),
+                't' => try parsed_string.append(allocator, '\t'),
+                '"' => try parsed_string.append(allocator, '"'),
                 'x' => {
                     if (index.* + 2 > index_max)
                         return ScanError.InvalidStringEscapeCode;
@@ -438,14 +438,14 @@ fn parseString(
                     out |= std.fmt.charToDigit(byte, 16) catch
                         return ScanError.InvalidStringEscapeCode;
 
-                    try parsed_string.append(out);
+                    try parsed_string.append(allocator, out);
                 },
                 else => return ScanError.InvalidStringEscapeCode,
             }
         } else {
             switch (byte) {
                 '\n', '\r' => return ScanError.NewlineFoundInString,
-                else => try parsed_string.append(byte),
+                else => try parsed_string.append(allocator, byte),
             }
         }
     }
@@ -488,7 +488,7 @@ fn skipComment(
 /// assumes first character is valid
 fn readInteger(
     scanner: *Scanner,
-    array_list: *std.ArrayList(u8),
+    array_list: *std.ArrayListUnmanaged(u8),
     first: u8,
 ) !void {
     const reader = scanner.source.reader();
@@ -499,7 +499,7 @@ fn readInteger(
 
         switch (second) {
             '0'...'9', 'b', 'o', 'x' => {
-                try array_list.append(second);
+                try array_list.append(scanner.allocator, second);
 
                 switch (second) {
                     'b' => base = 2,
@@ -518,7 +518,7 @@ fn readInteger(
         integer_builder: switch (byte) {
             '0'...'9' => {
                 if (byte & 0xf < base) {
-                    try array_list.append(byte);
+                    try array_list.append(scanner.allocator, byte);
                     continue :integer_builder reader.readByte() catch
                         break :integer_builder;
                 } else {
@@ -527,7 +527,7 @@ fn readInteger(
             },
             'a'...'f', 'A'...'F' => {
                 if (base == 16) {
-                    try array_list.append(byte);
+                    try array_list.append(scanner.allocator, byte);
                     continue :integer_builder reader.readByte() catch
                         break :integer_builder;
                 } else {
@@ -546,14 +546,14 @@ fn readInteger(
 /// the first byte is already read
 fn readIdentifier(
     scanner: *Scanner,
-    array_list: *std.ArrayList(u8),
+    array_list: *std.ArrayListUnmanaged(u8),
 ) !void {
     const reader = scanner.source.reader();
 
     if (try common.readByteOrEof(scanner.source)) |byte| {
         identifier_builder: switch (byte) {
             'a'...'z', 'A'...'Z', '0'...'9', '_' => |char| {
-                try array_list.append(char);
+                try array_list.append(scanner.allocator, char);
                 continue :identifier_builder reader.readByte() catch
                     break :identifier_builder;
             },
@@ -593,11 +593,15 @@ pub fn printError(
     const line_start_index = location.index - location.column;
     try scanner.source.seekTo(line_start_index);
 
-    var line_list = std.ArrayList(u8).init(scanner.allocator);
-    defer line_list.deinit();
+    var line_list: std.ArrayListUnmanaged(u8) = .empty;
+    defer line_list.deinit(scanner.allocator);
 
     // don't error on EOF
-    scanner.source.reader().streamUntilDelimiter(line_list.writer(), '\n', null) catch |err| {
+    scanner.source.reader().streamUntilDelimiter(
+        line_list.writer(scanner.allocator),
+        '\n',
+        null,
+    ) catch |err| {
         switch (err) {
             error.EndOfStream => {},
             else => return err,
@@ -623,7 +627,7 @@ pub fn printError(
     try stderr.writeAll("^\n\n");
 }
 
-pub const TokenKind = enum {
+pub const Kind = enum {
     // non-operator symbol tokens
     comma,
     left_brace, // {
@@ -693,7 +697,7 @@ pub const Location = struct {
 };
 
 pub const Token = struct {
-    kind: TokenKind,
+    kind: Kind,
     lexeme: []const u8,
     literal: union {
         string: []const u8,
