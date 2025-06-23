@@ -118,7 +118,7 @@ value             : INTEGER
                   | array_def
                   | "(" expression ")"
 
-array_def         : "[" array_element ("," array_element)* "]"
+array_def         : "[" (array_element ("," array_element)*)? "]"
 
 array_element     : range | expression
 
