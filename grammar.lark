@@ -57,9 +57,11 @@ block             : "{" statement* "}"
 ARRAY_TYPE        : "[" (INTEGER | IDENTIFIER)? "]"
 macro_params      : ARRAY_TYPE? IDENTIFIER ("," ARRAY_TYPE? IDENTIFIER)*
 
-const_decl        : "pub"? "const" IDENTIFIER "=" expression
-var_decl          : "pub"? "var" IDENTIFIER "=" expression
-macro_decl        : "pub"? "macro" IDENTIFIER "(" macro_params? ")" block
+pub_decl          : "pub" (const_decl | var_decl | macro_decl)
+
+const_decl        : "const" IDENTIFIER "=" expression
+var_decl          : "var" IDENTIFIER "=" expression
+macro_decl        : "macro" IDENTIFIER "(" macro_params? ")" block
 
 import            : "import" value "as" IDENTIFIER
 
