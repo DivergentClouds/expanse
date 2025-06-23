@@ -28,6 +28,17 @@ pub fn ScalarIterator(comptime T: type) type {
         pub fn rest(self: Self) []const T {
             return self.buffer[self.index..];
         }
+
+        pub fn reset(self: *Self) void {
+            self.index = 0;
+        }
+
+        pub fn previous(self: *Self) ?T {
+            if (self.index == 0) return null;
+
+            self.index -= 1;
+            return self.peek();
+        }
     };
 }
 
