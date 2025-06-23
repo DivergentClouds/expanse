@@ -113,6 +113,7 @@ pub const ParseErrorWithPayload = common.ErrorWithPayload(
 );
 
 pub const ParseError = error{
+    ExpectedCommaFoundEof,
     UnexpectedToken,
     UnfinishedStatement,
 };
@@ -153,6 +154,9 @@ pub fn parse(parser: *Parser) !ParseResult {
         .node => |statement| {
             if (success) {
                 try parser.result.tokens.append(statement);
+
+                continue :ast_builder try parser.parseStatement() orelse
+                    break :ast_builder;
             }
             // don't bother freeing the node if !success, we are using an arena
         },
@@ -168,7 +172,7 @@ pub fn parse(parser: *Parser) !ParseResult {
             }
             try parser.result.errors.append(parser.allocator, err);
 
-            continue :ast_builder parser.parseStatement() orelse
+            continue :ast_builder try parser.parseStatement() orelse
                 break :ast_builder;
         },
     }
@@ -213,7 +217,9 @@ fn parseStatement(parser: *Parser) !?NodeOrError {
         .import => {
             return try parser.defineImport(current_token);
         },
-        .@"if" => {},
+        .@"if" => {
+            return try parser.defineIf(current_token);
+        },
         .elseif, .@"else" => {
             // handle elseif and else when generating if
             return .{
@@ -383,15 +389,21 @@ fn defineOutputExpression(parser: *Parser, initial_token: ?Token) !NodeOrError {
                     };
                 } else {
                     return .{ .error_with_payload = .{
-                        .err = ParseError.ExpectedCommaFoundEof,
+                        .err = ParseError.UnexpectedToken,
                         .payload = next_token,
                     } };
                 }
             } else {
-                return .{ .error_with_payload = .{
-                    .err = ParseError.ExpectedCommaFoundEof,
-                    .payload = .{},
-                } };
+                return .{
+                    .error_with_payload = .{
+                        .err = ParseError.ExpectedCommaFoundEof,
+                        .payload = parser.token_iterator.previous() orelse
+                            // this would only be reachable if there were no previous tokens,
+                            // but we just parsed an expression which contained at least 1 token
+                            // since it returned a node
+                            unreachable,
+                    },
+                };
             }
         },
         .error_with_payload => return expression_or_err,
